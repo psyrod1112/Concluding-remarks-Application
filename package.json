@@ -1,0 +1,22 @@
+{
+  "name": "opensourceproject",
+  "version": "1.0.0",
+  "description": "> AWS 기반 실시간 1대1 랜덤 매칭 끝말잇기 웹 게임",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "redis": "^5.11.0",
+    "ws": "^8.20.0"
+  }
+}
