@@ -1,0 +1,174 @@
+# ──────────────────────────────────────────
+# 끝말오브 레전드 API 테스트
+# VS Code REST Client 확장 필요 (humao.rest-client)
+# ──────────────────────────────────────────
+# 사용법:
+#   1. 로그인 후 응답의 accessToken / refreshToken 복사
+#   2. 아래 변수에 붙여넣기
+#   3. 각 요청 위 "Send Request" 클릭
+# ──────────────────────────────────────────
+
+@baseUrl      = http://localhost:3000
+@accessToken  = 여기에_로그인_후_accessToken_붙여넣기
+@refreshToken = 여기에_로그인_후_refreshToken_붙여넣기
+
+
+### ── 헬스체크 ──────────────────────────────
+
+GET {{baseUrl}}/health
+
+###
+
+GET {{baseUrl}}/health/detail
+
+
+### ── 인증 ────────────────────────────────
+
+### 회원가입
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "userId": "test1234",
+  "nickname": "테스트유저",
+  "password": "123456"
+}
+
+###
+
+### 로그인 → accessToken, refreshToken 복사 후 위 변수에 붙여넣기
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userId": "test1234",
+  "password": "123456"
+}
+
+###
+
+### 액세스 토큰 갱신
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### 내 정보 조회 (인증 필요)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 로그아웃 (인증 필요)
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+
+### ── 유저 ────────────────────────────────
+
+### 유저 전적 (공개)
+GET {{baseUrl}}/api/users/test1234/stats
+
+###
+
+### 내 프로필 (인증 필요)
+GET {{baseUrl}}/api/users/me/profile
+Authorization: Bearer {{accessToken}}
+
+
+### ── 커뮤니티 ──────────────────────────────
+
+### 게시글 목록 (전체)
+GET {{baseUrl}}/api/community/posts
+
+###
+
+### 게시글 목록 (카테고리 필터)
+GET {{baseUrl}}/api/community/posts?category=질문
+
+###
+
+### 게시글 작성 (인증 필요)
+POST {{baseUrl}}/api/community/posts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "테스트 게시글입니다",
+  "content": "내용이 들어갑니다.",
+  "category": "자유"
+}
+
+###
+
+### 게시글 상세 조회 (조회수 +1)
+GET {{baseUrl}}/api/community/posts/1
+
+###
+
+### 댓글 목록
+GET {{baseUrl}}/api/community/posts/1/comments
+
+###
+
+### 댓글 작성 (인증 필요)
+POST {{baseUrl}}/api/community/posts/1/comments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "content": "좋은 글이네요!"
+}
+
+
+### ── 랜덤 매칭 ──────────────────────────────
+
+### 매칭 대기열 참가 (인증 필요)
+POST {{baseUrl}}/api/matches/random/queue
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 매칭 상태 확인 (인증 필요)
+GET {{baseUrl}}/api/matches/random/status
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 매칭 취소 (인증 필요)
+DELETE {{baseUrl}}/api/matches/random/queue
+Authorization: Bearer {{accessToken}}
+
+
+### ── 게임방 ──────────────────────────────
+
+### 방 만들기 (인증 필요)
+POST {{baseUrl}}/api/game-rooms
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "테스트 방",
+  "mode": "friendly"
+}
+
+###
+
+### 방 조회 (인증 필요)
+GET {{baseUrl}}/api/game-rooms/temp-room-id
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 방 입장 (인증 필요)
+POST {{baseUrl}}/api/game-rooms/temp-room-id/join
+Authorization: Bearer {{accessToken}}

@@ -1,73 +1,74 @@
 const express = require('express');
-const { authMiddleware } = require('./auth');
+const pool = require('../db/postgres');
+const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/users/me/profile
-router.get('/me/profile', authMiddleware, (req, res) => {
-    return res.json({
-        message: '내 프로필 조회 엔드포인트',
-        profile: {
-            id: req.user.userId,
-            username: req.user.username,
-            email: req.user.email,
-            tier: 'Bronze',
-            rankPoint: 0,
-            profileImageUrl: null,
-        },
-    });
+// GET /api/users/:userId/stats
+router.get('/:userId/stats', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT user_id, nickname, score, win_count, lose_count
+             FROM users
+             WHERE user_id = $1 AND is_active = TRUE`,
+            [req.params.userId]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ message: '유저를 찾을 수 없습니다.' });
+
+        const u = result.rows[0];
+        return res.json({
+            userId:    u.user_id,
+            nickname:  u.nickname,
+            score:     u.score,
+            winCount:  u.win_count,
+            loseCount: u.lose_count,
+            winRate:   u.win_count + u.lose_count === 0
+                ? 0
+                : Math.round((u.win_count / (u.win_count + u.lose_count)) * 100),
+        });
+    } catch (err) {
+        console.error('[Users] stats 오류:', err.message);
+        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
 });
 
-// GET /api/users/me/stats
-router.get('/me/stats', authMiddleware, (req, res) => {
-    return res.json({
-        message: '내 전적 조회 엔드포인트',
-        stats: {
-            totalGames: 0,
-            wins: 0,
-            losses: 0,
-            winRate: 0,
-            rankGames: {
-                totalGames: 0,
-                wins: 0,
-                losses: 0,
-            },
-            normalGames: {
-                totalGames: 0,
-                wins: 0,
-                losses: 0,
-            },
-        },
-    });
+// GET /api/users/me/profile  (인증 필요)
+router.get('/me/profile', authMiddleware, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT user_id, nickname, score, win_count, lose_count
+             FROM users
+             WHERE user_id = $1`,
+            [req.user.userId]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ message: '유저를 찾을 수 없습니다.' });
+
+        const u = result.rows[0];
+        return res.json({
+            userId:    u.user_id,
+            nickname:  u.nickname,
+            score:     u.score,
+            winCount:  u.win_count,
+            loseCount: u.lose_count,
+        });
+    } catch (err) {
+        console.error('[Users] profile 오류:', err.message);
+        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
 });
 
-// GET /api/users/:userId/records
-router.get('/:userId/records', (req, res) => {
-    return res.json({
-        message: '특정 유저 전적 조회 엔드포인트',
-        userId: req.params.userId,
-        records: {
-            totalGames: 0,
-            wins: 0,
-            losses: 0,
-            winRate: 0,
-            tier: 'Bronze',
-        },
-    });
-});
-
-// PATCH /api/users/me/password
+// PATCH /api/users/me/password  (인증 필요)
 router.patch('/me/password', authMiddleware, (req, res) => {
-    return res.json({
-        message: '비밀번호 변경 엔드포인트',
-    });
+    return res.json({ message: '비밀번호 변경 엔드포인트 (미구현)' });
 });
 
-// DELETE /api/users/me
+// DELETE /api/users/me  (인증 필요)
 router.delete('/me', authMiddleware, (req, res) => {
-    return res.json({
-        message: '회원탈퇴 엔드포인트',
-    });
+    return res.json({ message: '회원탈퇴 엔드포인트 (미구현)' });
 });
 
 module.exports = router;

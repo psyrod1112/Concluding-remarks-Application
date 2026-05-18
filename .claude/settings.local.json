@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\admin\\\\OpenSourceProject\\\\Concluding-remarks-Application\\\\backend\\\\src\\\\middleware\")",
+      "Bash(Out-Null)",
+      "Bash(mkdir -p /mnt/c/Users/admin/OpenSourceProject/Concluding-remarks-Application/backend/src/middleware)"
+    ],
+    "additionalDirectories": [
+      "\\mnt\\c\\Users\\admin\\OpenSourceProject\\Concluding-remarks-Application\\backend\\src"
+    ]
+  }
+}
