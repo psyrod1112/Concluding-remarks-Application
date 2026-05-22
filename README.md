@@ -149,3 +149,4 @@ npm start
 - Redis 공식 문서: https://redis.io/docs
 - UML 다이어그램: https://www.plantuml.com
 
+# rhdghcks - DB
