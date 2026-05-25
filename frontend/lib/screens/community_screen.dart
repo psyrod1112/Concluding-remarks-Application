@@ -87,17 +87,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inMinutes < 1) {
-      return '방금 전';
-    }
-
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}분 전';
-    }
-
-    if (diff.inHours < 24) {
-      return '${diff.inHours}시간 전';
-    }
+    if (diff.inMinutes < 1) return '방금 전';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
 
     return '${diff.inDays}일 전';
   }
@@ -105,19 +97,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   Widget build(BuildContext context) {
     final currentPosts = posts;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        title: const Text('커뮤니티'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFFF5F6FA),
-        elevation: 0,
-      ),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('커뮤니티')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: openWritePostSheet,
-        backgroundColor: const Color(0xFF3F51B5),
-        foregroundColor: Colors.white,
         icon: const Icon(Icons.edit_outlined),
         label: const Text('글쓰기'),
       ),
@@ -136,19 +123,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   label: Text(category),
                   selected: isSelected,
                   onSelected: (_) => changeCategory(category),
-                  selectedColor: const Color(0xFFE8EAF6),
+                  backgroundColor: theme.cardColor,
+                  selectedColor: colorScheme.primary.withOpacity(0.20),
                   labelStyle: TextStyle(
                     color: isSelected
-                        ? const Color(0xFF3F51B5)
-                        : Colors.black87,
+                        ? colorScheme.primary
+                        : colorScheme.onSurface,
                     fontWeight: isSelected
                         ? FontWeight.bold
                         : FontWeight.normal,
                   ),
                   side: BorderSide(
                     color: isSelected
-                        ? const Color(0xFF3F51B5)
-                        : Colors.black12,
+                        ? colorScheme.primary
+                        : colorScheme.onSurface.withOpacity(0.12),
                   ),
                 );
               },
@@ -194,8 +182,11 @@ class _PostListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Material(
-      color: Colors.white,
+      color: theme.cardColor,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -211,7 +202,10 @@ class _PostListItem extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     timeText,
-                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurface.withOpacity(0.45),
+                    ),
                   ),
                 ],
               ),
@@ -220,10 +214,10 @@ class _PostListItem extends StatelessWidget {
                 post.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF263238),
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
@@ -231,46 +225,55 @@ class _PostListItem extends StatelessWidget {
                 post.content,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: Colors.black54,
+                  color: colorScheme.onSurface.withOpacity(0.65),
                   height: 1.35,
                 ),
               ),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.person_outline,
                     size: 16,
-                    color: Colors.black45,
+                    color: colorScheme.onSurface.withOpacity(0.45),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     post.authorNickname,
-                    style: const TextStyle(fontSize: 13, color: Colors.black54),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurface.withOpacity(0.65),
+                    ),
                   ),
                   const Spacer(),
-                  const Icon(
+                  Icon(
                     Icons.visibility_outlined,
                     size: 16,
-                    color: Colors.black38,
+                    color: colorScheme.onSurface.withOpacity(0.40),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     '${post.viewCount}',
-                    style: const TextStyle(fontSize: 13, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurface.withOpacity(0.55),
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  const Icon(
+                  Icon(
                     Icons.chat_bubble_outline,
                     size: 16,
-                    color: Colors.black38,
+                    color: colorScheme.onSurface.withOpacity(0.40),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     '${post.commentCount}',
-                    style: const TextStyle(fontSize: 13, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurface.withOpacity(0.55),
+                    ),
                   ),
                 ],
               ),
@@ -289,18 +292,20 @@ class _CategoryBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8EAF6),
+        color: colorScheme.primary.withOpacity(0.15),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         category,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF3F51B5),
+          color: colorScheme.primary,
         ),
       ),
     );
@@ -312,10 +317,15 @@ class _EmptyPostView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Center(
       child: Text(
         '아직 게시글이 없습니다.',
-        style: TextStyle(fontSize: 15, color: Colors.black45),
+        style: TextStyle(
+          fontSize: 15,
+          color: colorScheme.onSurface.withOpacity(0.55),
+        ),
       ),
     );
   }
@@ -380,14 +390,16 @@ class _WritePostSheetState extends State<_WritePostSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-        decoration: const BoxDecoration(
-          color: Color(0xFFF5F6FA),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -397,19 +409,25 @@ class _WritePostSheetState extends State<_WritePostSheet> {
                 width: 42,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.black26,
+                  color: colorScheme.onSurface.withOpacity(0.25),
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
               const SizedBox(height: 22),
-              const Text(
+              Text(
                 '게시글 작성',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
                 value: selectedCategory,
+                dropdownColor: theme.cardColor,
                 decoration: inputDecoration(
+                  context,
                   label: '카테고리',
                   icon: Icons.category_outlined,
                 ),
@@ -431,7 +449,11 @@ class _WritePostSheetState extends State<_WritePostSheet> {
               TextField(
                 controller: titleController,
                 textInputAction: TextInputAction.next,
-                decoration: inputDecoration(label: '제목', icon: Icons.title),
+                decoration: inputDecoration(
+                  context,
+                  label: '제목',
+                  icon: Icons.title,
+                ),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -439,6 +461,7 @@ class _WritePostSheetState extends State<_WritePostSheet> {
                 minLines: 5,
                 maxLines: 8,
                 decoration: inputDecoration(
+                  context,
                   label: '내용',
                   icon: Icons.notes_outlined,
                 ),
@@ -449,13 +472,6 @@ class _WritePostSheetState extends State<_WritePostSheet> {
                 height: 52,
                 child: ElevatedButton(
                   onPressed: submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3F51B5),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
                   child: const Text(
                     '등록하기',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -469,15 +485,20 @@ class _WritePostSheetState extends State<_WritePostSheet> {
     );
   }
 
-  InputDecoration inputDecoration({
+  InputDecoration inputDecoration(
+    BuildContext context, {
     required String label,
     required IconData icon,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: theme.cardColor,
+      labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.75)),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
@@ -493,7 +514,11 @@ class _PostDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return AlertDialog(
+      backgroundColor: theme.cardColor,
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -505,7 +530,11 @@ class _PostDetailDialog extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             post.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
           ),
         ],
       ),
@@ -517,24 +546,34 @@ class _PostDetailDialog extends StatelessWidget {
             children: [
               Text(
                 '${post.authorNickname} · 조회 ${post.viewCount} · 댓글 ${post.commentCount}',
-                style: const TextStyle(fontSize: 13, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurface.withOpacity(0.65),
+                ),
               ),
               const SizedBox(height: 18),
               Text(
                 post.content,
-                style: const TextStyle(fontSize: 15, height: 1.5),
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.5,
+                  color: colorScheme.onSurface,
+                ),
               ),
               const SizedBox(height: 20),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F6FA),
+                  color: theme.scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Text(
+                child: Text(
                   '댓글 기능은 추후 백엔드 연결 후 구현 예정입니다.',
-                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withOpacity(0.65),
+                  ),
                 ),
               ),
             ],

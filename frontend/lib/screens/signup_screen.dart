@@ -132,7 +132,7 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               children: [
                 const Text(
-                  '끝말오브 레전드',
+                  '말꼬리',
                   style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.bold,

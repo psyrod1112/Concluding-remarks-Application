@@ -47,23 +47,32 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
     AppMessage.show(context, '랜덤 매칭을 취소했습니다.');
   }
 
+  // TODO: 백엔드 연결 후 실제 매칭 성공 응답의 roomId를 넘기기
+  // 예: 'roomId': matchedRoom.roomId
   void enterGameRoom() {
-    // TODO: 나중에 실제 끝말잇기 채팅방 화면으로 이동
-    AppMessage.show(context, '게임방 입장은 추후 연결 예정입니다.');
+    Navigator.pushNamed(
+      context,
+      '/game',
+      arguments: {
+        'roomId': 'mock-random-room',
+        'roomType': 'random',
+        'roomTitle': '랜덤 매칭',
+        'opponentId': matchedPlayer?.userId ?? 'mock-opponent',
+        'opponentNickname': matchedPlayer?.nickname ?? '상대방',
+        'isMockMode': true,
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final currentUser = AuthService().getCurrentUser();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        title: const Text('랜덤 매칭'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFFF5F6FA),
-        elevation: 0,
-      ),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('랜덤 매칭')),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -100,13 +109,6 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
               height: 52,
               child: ElevatedButton(
                 onPressed: enterGameRoom,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3F51B5),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
                 child: const Text(
                   '게임방 입장',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -119,8 +121,8 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
               child: OutlinedButton(
                 onPressed: startMatching,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF3F51B5),
-                  side: const BorderSide(color: Color(0xFF3F51B5)),
+                  foregroundColor: colorScheme.primary,
+                  side: BorderSide(color: colorScheme.primary),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -138,13 +140,6 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
               height: 54,
               child: ElevatedButton(
                 onPressed: startMatching,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3F51B5),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
                 child: const Text(
                   '랜덤 매칭 시작',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
@@ -166,18 +161,21 @@ class _MyPlayerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 32,
-            backgroundColor: Color(0xFF3F51B5),
-            child: Icon(Icons.person, size: 36, color: Colors.white),
+            backgroundColor: colorScheme.primary,
+            child: const Icon(Icons.person, size: 36, color: Colors.white),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -186,20 +184,24 @@ class _MyPlayerCard extends StatelessWidget {
               children: [
                 Text(
                   nickname,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'ID: $userId',
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withOpacity(0.65),
+                  ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.sports_esports_outlined, color: Color(0xFF3F51B5)),
+          Icon(Icons.sports_esports_outlined, color: colorScheme.primary),
         ],
       ),
     );
@@ -211,28 +213,38 @@ class _MatchGuideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '랜덤 매칭 안내',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           Text(
             '현재는 프론트 테스트용 임시 매칭입니다.',
-            style: TextStyle(fontSize: 14, color: Colors.black87),
+            style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             '나중에 백엔드가 연결되면 실시간 접속자 중 한 명과 자동으로 매칭됩니다.',
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurface.withOpacity(0.65),
+            ),
           ),
         ],
       ),
@@ -245,32 +257,42 @@ class _SearchingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 36),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Column(
+      child: Column(
         children: [
           SizedBox(
             width: 44,
             height: 44,
             child: CircularProgressIndicator(
               strokeWidth: 4,
-              color: Color(0xFF3F51B5),
+              color: colorScheme.primary,
             ),
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Text(
             '상대를 찾는 중입니다...',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             '실시간 끝말잇기 대전 상대를 검색하고 있습니다.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurface.withOpacity(0.65),
+            ),
           ),
         ],
       ),
@@ -285,42 +307,49 @@ class _MatchedPlayerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF3F51B5), width: 1.3),
+        border: Border.all(color: colorScheme.primary, width: 1.3),
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             '매칭 완료',
             style: TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF3F51B5),
+              color: colorScheme.primary,
             ),
           ),
           const SizedBox(height: 20),
-          const CircleAvatar(
+          CircleAvatar(
             radius: 38,
-            backgroundColor: Color(0xFFE8EAF6),
+            backgroundColor: colorScheme.primary.withOpacity(0.15),
             child: Icon(
               Icons.person_outline,
               size: 42,
-              color: Color(0xFF3F51B5),
+              color: colorScheme.primary,
             ),
           ),
           const SizedBox(height: 14),
           Text(
             player.nickname,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             'ID: ${player.userId}',
-            style: const TextStyle(color: Colors.black54),
+            style: TextStyle(color: colorScheme.onSurface.withOpacity(0.65)),
           ),
           const SizedBox(height: 18),
           Row(
@@ -350,20 +379,25 @@ class _OpponentStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF3F51B5),
+            color: colorScheme.primary,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           title,
-          style: const TextStyle(fontSize: 13, color: Colors.black54),
+          style: TextStyle(
+            fontSize: 13,
+            color: colorScheme.onSurface.withOpacity(0.65),
+          ),
         ),
       ],
     );

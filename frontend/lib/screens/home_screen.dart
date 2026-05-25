@@ -9,6 +9,8 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = AuthService().getCurrentUser();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -18,28 +20,32 @@ class HomeScreen extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.cardColor,
               borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
               children: [
-                const Icon(
+                Icon(
                   Icons.account_circle_outlined,
                   size: 56,
-                  color: Color(0xFF3F51B5),
+                  color: colorScheme.primary,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   user == null ? '게스트' : '${user.nickname}님',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   user == null ? '로그인 정보 없음' : 'ID: ${user.userId}',
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withOpacity(0.65),
+                  ),
                 ),
               ],
             ),
@@ -101,7 +107,11 @@ class _HomeMenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Card(
+      color: theme.cardColor,
       elevation: 1.5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: InkWell(
@@ -110,11 +120,15 @@ class _HomeMenuCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 42, color: const Color(0xFF3F51B5)),
+            Icon(icon, size: 42, color: colorScheme.primary),
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
             ),
           ],
         ),
