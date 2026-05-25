@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
-                  '끝말오브 레전드',
+                  '말꼬리',
                   style: TextStyle(
                     fontSize: 34,
                     fontWeight: FontWeight.bold,
