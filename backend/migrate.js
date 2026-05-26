@@ -49,71 +49,29 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
 
--- games 테이블 (1v1 끝말잇기 대전 기록)
-CREATE TABLE IF NOT EXISTS games (
-    id                    SERIAL PRIMARY KEY,
-    player1_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    player2_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    winner_id             UUID REFERENCES users(id) ON DELETE SET NULL,
-    player1_score_before  INTEGER NOT NULL,
-    player1_score_after   INTEGER NOT NULL,
-    player2_score_before  INTEGER NOT NULL,
-    player2_score_after   INTEGER NOT NULL,
-    word_chain            JSONB NOT NULL DEFAULT '[]'::jsonb,
-    end_reason            VARCHAR(20) NOT NULL,
-    duration_seconds      INTEGER NOT NULL DEFAULT 0,
-    played_at             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT chk_games_distinct_players
-        CHECK (player1_id <> player2_id),
-    CONSTRAINT chk_games_winner_is_participant
-        CHECK (winner_id IS NULL OR winner_id = player1_id OR winner_id = player2_id),
-    CONSTRAINT chk_games_end_reason
-        CHECK (end_reason IN ('win', 'timeout', 'invalid_word', 'disconnect', 'draw'))
+-- game_rooms 테이블
+CREATE TABLE IF NOT EXISTS game_rooms (
+    id          SERIAL PRIMARY KEY,
+    title       VARCHAR(50)  NOT NULL,
+    password    VARCHAR(30),
+    host_id     UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status      VARCHAR(10)  NOT NULL DEFAULT 'waiting',
+    max_players INTEGER      NOT NULL DEFAULT 2,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_games_player1_played_at
-    ON games (player1_id, played_at DESC);
-CREATE INDEX IF NOT EXISTS idx_games_player2_played_at
-    ON games (player2_id, played_at DESC);
-CREATE INDEX IF NOT EXISTS idx_games_played_at
-    ON games (played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_rooms_host_id ON game_rooms (host_id);
+CREATE INDEX IF NOT EXISTS idx_game_rooms_status  ON game_rooms (status);
 
--- 랭킹 조회 최적화용 인덱스 (score 내림차순, 동점자 가입 빠른 순)
-CREATE INDEX IF NOT EXISTS idx_users_ranking
-    ON users (score DESC, created_at ASC)
-    WHERE is_active = true;
-
--- 랭킹 조회용 view
-CREATE OR REPLACE VIEW v_user_ranking AS
-SELECT
-    ROW_NUMBER() OVER (ORDER BY score DESC, created_at ASC) AS rank,
-    id,
-    username,
-    score,
-    win_count,
-    lose_count,
-    (win_count + lose_count) AS total_games,
-    CASE
-        WHEN (win_count + lose_count) = 0 THEN 0
-        ELSE ROUND(win_count * 100.0 / (win_count + lose_count), 1)
-    END AS win_rate
-FROM users
-WHERE is_active = true;
-
--- words 테이블 (끝말잇기 사전)
-CREATE TABLE IF NOT EXISTS words (
-    word        VARCHAR(20) PRIMARY KEY,
-    length      INTEGER NOT NULL,
-    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT chk_words_length_match
-        CHECK (length = char_length(word)),
-    CONSTRAINT chk_words_length_positive
-        CHECK (length >= 1)
+-- room_participants 테이블
+CREATE TABLE IF NOT EXISTS room_participants (
+    room_id    INTEGER NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    user_id    UUID    NOT NULL REFERENCES users(id)      ON DELETE CASCADE,
+    joined_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (room_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
+CREATE INDEX IF NOT EXISTS idx_room_participants_user_id ON room_participants (user_id);
 `;
 
 async function migrate() {
