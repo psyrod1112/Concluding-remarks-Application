@@ -48,6 +48,36 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
+
+-- games 테이블 (1v1 끝말잇기 대전 기록)
+CREATE TABLE IF NOT EXISTS games (
+    id                    SERIAL PRIMARY KEY,
+    player1_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player2_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    winner_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+    player1_score_before  INTEGER NOT NULL,
+    player1_score_after   INTEGER NOT NULL,
+    player2_score_before  INTEGER NOT NULL,
+    player2_score_after   INTEGER NOT NULL,
+    word_chain            JSONB NOT NULL DEFAULT '[]'::jsonb,
+    end_reason            VARCHAR(20) NOT NULL,
+    duration_seconds      INTEGER NOT NULL DEFAULT 0,
+    played_at             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_games_distinct_players
+        CHECK (player1_id <> player2_id),
+    CONSTRAINT chk_games_winner_is_participant
+        CHECK (winner_id IS NULL OR winner_id = player1_id OR winner_id = player2_id),
+    CONSTRAINT chk_games_end_reason
+        CHECK (end_reason IN ('win', 'timeout', 'invalid_word', 'disconnect', 'draw'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_player1_played_at
+    ON games (player1_id, played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_games_player2_played_at
+    ON games (player2_id, played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_games_played_at
+    ON games (played_at DESC);
 `;
 
 async function migrate() {
