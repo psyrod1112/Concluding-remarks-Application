@@ -78,6 +78,28 @@ CREATE INDEX IF NOT EXISTS idx_games_player2_played_at
     ON games (player2_id, played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_games_played_at
     ON games (played_at DESC);
+
+-- 랭킹 조회 최적화용 인덱스 (score 내림차순, 동점자 가입 빠른 순)
+CREATE INDEX IF NOT EXISTS idx_users_ranking
+    ON users (score DESC, created_at ASC)
+    WHERE is_active = true;
+
+-- 랭킹 조회용 view
+CREATE OR REPLACE VIEW v_user_ranking AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY score DESC, created_at ASC) AS rank,
+    id,
+    username,
+    score,
+    win_count,
+    lose_count,
+    (win_count + lose_count) AS total_games,
+    CASE
+        WHEN (win_count + lose_count) = 0 THEN 0
+        ELSE ROUND(win_count * 100.0 / (win_count + lose_count), 1)
+    END AS win_rate
+FROM users
+WHERE is_active = true;
 `;
 
 async function migrate() {
