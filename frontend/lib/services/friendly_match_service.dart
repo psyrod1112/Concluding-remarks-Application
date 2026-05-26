@@ -1,4 +1,5 @@
 import '../models/friendly_room.dart';
+import 'api_client.dart';
 
 enum JoinRoomResult {
   success,
@@ -8,155 +9,86 @@ enum JoinRoomResult {
   alreadyInOtherRoom,
   passwordRequired,
   wrongPassword,
+  error,
 }
 
 class FriendlyMatchService {
-  static int _nextId = 4;
-
-  static final List<FriendlyRoom> _rooms = [
-    FriendlyRoom(
-      id: 1,
-      title: '초보 환영 방',
-      hostId: 'apple_king',
-      hostNickname: '사과왕',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 7)),
-      participantIds: const ['apple_king'],
-    ),
-    FriendlyRoom(
-      id: 2,
-      title: '친구랑 연습 중',
-      hostId: 'word_master',
-      hostNickname: '끝말고수',
-      password: '1111',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 18)),
-      participantIds: const ['word_master'],
-    ),
-    FriendlyRoom(
-      id: 3,
-      title: '빠른 대결 갑니다',
-      hostId: 'banana_user',
-      hostNickname: '바나나킥',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 32)),
-      participantIds: const ['banana_user', 'legend_001'],
-    ),
-  ];
-
-  List<FriendlyRoom> getRooms() {
-    return List.unmodifiable(_rooms);
+  // ── 방 목록 ──────────────────────────────────
+  Future<List<FriendlyRoom>> getRooms() async {
+    final data = await ApiClient.get('/api/game-rooms');
+    return (data['rooms'] as List)
+        .map((e) => FriendlyRoom.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  FriendlyRoom? getRoomById(int roomId) {
+  // ── 방 상세 조회 ─────────────────────────────
+  Future<FriendlyRoom?> getRoomById(int roomId) async {
     try {
-      return _rooms.firstWhere((room) => room.id == roomId);
+      final data = await ApiClient.get('/api/game-rooms/$roomId');
+      return FriendlyRoom.fromJson(data);
     } catch (_) {
       return null;
     }
   }
 
-  FriendlyRoom? getJoinedRoomByUserId(String userId) {
+  // ── 내가 참여 중인 방 조회 ───────────────────
+  Future<FriendlyRoom?> getMyRoom() async {
     try {
-      return _rooms.firstWhere((room) => room.participantIds.contains(userId));
-    } catch (_) {
-      return null;
+      final data = await ApiClient.get('/api/game-rooms/my');
+      return FriendlyRoom.fromJson(data);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
     }
   }
 
-  bool isUserInAnyRoom(String userId) {
-    return getJoinedRoomByUserId(userId) != null;
-  }
-
-  FriendlyRoom? createRoom({
+  // ── 방 만들기 ─────────────────────────────────
+  /// 생성된 FriendlyRoom 반환. 이미 다른 방에 있으면 ApiException(400) throw.
+  Future<FriendlyRoom> createRoom({
     required String title,
-    required String hostId,
-    required String hostNickname,
     String? password,
-  }) {
-    if (isUserInAnyRoom(hostId)) {
-      return null;
-    }
-
-    final room = FriendlyRoom(
-      id: _nextId,
-      title: title,
-      hostId: hostId,
-      hostNickname: hostNickname,
-      password: password == null || password.isEmpty ? null : password,
-      createdAt: DateTime.now(),
-      participantIds: [hostId],
-    );
-
-    _nextId++;
-    _rooms.insert(0, room);
-
-    return room;
+  }) async {
+    final data = await ApiClient.post('/api/game-rooms', {
+      'title': title,
+      if (password != null && password.isNotEmpty) 'password': password,
+    });
+    return FriendlyRoom.fromJson(data['room'] as Map<String, dynamic>);
   }
 
-  JoinRoomResult joinRoom({
+  // ── 방 입장 ───────────────────────────────────
+  Future<({JoinRoomResult result, FriendlyRoom? room})> joinRoom({
     required int roomId,
-    required String userId,
     String? password,
-  }) {
-    final index = _rooms.indexWhere((room) => room.id == roomId);
-
-    if (index == -1) {
-      return JoinRoomResult.roomNotFound;
+  }) async {
+    try {
+      final data = await ApiClient.post('/api/game-rooms/$roomId/join', {
+        if (password != null) 'password': password,
+      });
+      final room = FriendlyRoom.fromJson(
+        data['room'] as Map<String, dynamic>,
+      );
+      return (result: JoinRoomResult.success, room: room);
+    } on ApiException catch (e) {
+      final result = switch (e.statusCode) {
+        400 => JoinRoomResult.alreadyInOtherRoom,
+        403 => JoinRoomResult.wrongPassword,
+        404 => JoinRoomResult.roomNotFound,
+        422 => JoinRoomResult.passwordRequired,
+        409 when e.message.contains('이미 이 방') => JoinRoomResult.alreadyJoined,
+        409 => JoinRoomResult.full,
+        _   => JoinRoomResult.error,
+      };
+      return (result: result, room: null);
     }
-
-    final joinedRoom = getJoinedRoomByUserId(userId);
-
-    if (joinedRoom != null) {
-      if (joinedRoom.id == roomId) {
-        return JoinRoomResult.alreadyJoined;
-      }
-
-      return JoinRoomResult.alreadyInOtherRoom;
-    }
-
-    final room = _rooms[index];
-
-    if (room.isFull) {
-      return JoinRoomResult.full;
-    }
-
-    if (room.hasPassword && (password == null || password.isEmpty)) {
-      return JoinRoomResult.passwordRequired;
-    }
-
-    if (room.hasPassword && room.password != password) {
-      return JoinRoomResult.wrongPassword;
-    }
-
-    final updatedParticipants = List<String>.from(room.participantIds)
-      ..add(userId);
-
-    _rooms[index] = room.copyWith(participantIds: updatedParticipants);
-
-    return JoinRoomResult.success;
   }
 
-  bool leaveRoom({required int roomId, required String userId}) {
-    final index = _rooms.indexWhere((room) => room.id == roomId);
-
-    if (index == -1) {
-      return false;
-    }
-
-    final room = _rooms[index];
-
-    if (!room.participantIds.contains(userId)) {
-      return false;
-    }
-
-    final updatedParticipants = List<String>.from(room.participantIds)
-      ..remove(userId);
-
-    if (updatedParticipants.isEmpty || room.hostId == userId) {
-      _rooms.removeAt(index);
+  // ── 방 나가기 ─────────────────────────────────
+  Future<bool> leaveRoom(int roomId) async {
+    try {
+      await ApiClient.post('/api/game-rooms/$roomId/leave', {});
       return true;
+    } catch (_) {
+      return false;
     }
-
-    _rooms[index] = room.copyWith(participantIds: updatedParticipants);
-
-    return true;
   }
 }

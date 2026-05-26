@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/friendly_room.dart';
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/friendly_match_service.dart';
 import '../utils/app_message.dart';
@@ -14,16 +15,38 @@ class FriendlyMatchScreen extends StatefulWidget {
 }
 
 class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
-  final FriendlyMatchService friendlyMatchService = FriendlyMatchService();
+  final FriendlyMatchService _service = FriendlyMatchService();
 
-  List<FriendlyRoom> get rooms => friendlyMatchService.getRooms();
+  List<FriendlyRoom> _rooms = [];
+  bool _isLoading = false;
 
-  void refreshRooms() {
-    setState(() {});
-    AppMessage.show(context, '방 목록을 새로고침했습니다.');
+  @override
+  void initState() {
+    super.initState();
+    _loadRooms();
   }
 
-  void openWaitingRoom(FriendlyRoom room) {
+  Future<void> _loadRooms() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    try {
+      final rooms = await _service.getRooms();
+      if (!mounted) return;
+      setState(() => _rooms = rooms);
+    } catch (e) {
+      if (!mounted) return;
+      AppMessage.show(context, '방 목록을 불러오지 못했습니다.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshRooms() async {
+    await _loadRooms();
+    if (mounted) AppMessage.show(context, '방 목록을 새로고침했습니다.');
+  }
+
+  void _openWaitingRoom(FriendlyRoom room) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -31,25 +54,29 @@ class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
       ),
     ).then((_) {
       if (!mounted) return;
-      setState(() {});
+      _loadRooms();
     });
   }
 
-  void openCreateRoomSheet() {
+  Future<void> _openCreateRoomSheet() async {
     final user = AuthService().getCurrentUser();
-
     if (user == null) {
       AppMessage.show(context, '로그인 정보가 없습니다.');
       return;
     }
 
-    final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(user.userId);
+    // 이미 참여 중인 방이 있으면 그 방으로 이동
+    try {
+      final myRoom = await _service.getMyRoom();
+      if (!mounted) return;
+      if (myRoom != null) {
+        AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
+        _openWaitingRoom(myRoom);
+        return;
+      }
+    } catch (_) {}
 
-    if (joinedRoom != null) {
-      AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
-      openWaitingRoom(joinedRoom);
-      return;
-    }
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -58,164 +85,121 @@ class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
       builder: (context) {
         return _CreateRoomSheet(
           onSubmit: ({required String title, required String? password}) {
-            final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(
-              user.userId,
-            );
-
-            if (joinedRoom != null) {
-              Navigator.pop(context);
-              AppMessage.show(this.context, '이미 참여 중인 방이 있습니다.');
-              openWaitingRoom(joinedRoom);
-              return;
-            }
-
-            final room = friendlyMatchService.createRoom(
-              title: title,
-              hostId: user.userId,
-              hostNickname: user.nickname,
-              password: password,
-            );
-
-            if (room == null) {
-              Navigator.pop(context);
-              AppMessage.show(this.context, '이미 참여 중인 방이 있습니다.');
-              return;
-            }
-
-            setState(() {});
             Navigator.pop(context);
-            AppMessage.show(this.context, '${room.title} 방을 만들었습니다.');
-            openWaitingRoom(room);
+            _createRoom(title: title, password: password);
           },
         );
       },
     );
   }
 
-  Future<void> enterRoom(FriendlyRoom room) async {
-    final user = AuthService().getCurrentUser();
+  Future<void> _createRoom({
+    required String title,
+    required String? password,
+  }) async {
+    try {
+      final room = await _service.createRoom(title: title, password: password);
+      if (!mounted) return;
+      setState(() {
+        _rooms.insert(0, room);
+      });
+      AppMessage.show(context, '${room.title} 방을 만들었습니다.');
+      _openWaitingRoom(room);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 400) {
+        // 이미 다른 방에 참여 중
+        final myRoom = await _service.getMyRoom();
+        if (!mounted) return;
+        if (myRoom != null) {
+          AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
+          _openWaitingRoom(myRoom);
+        }
+      } else {
+        AppMessage.show(context, e.message);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      AppMessage.show(context, '방 만들기에 실패했습니다.');
+    }
+  }
 
+  Future<void> _enterRoom(FriendlyRoom room) async {
+    final user = AuthService().getCurrentUser();
     if (user == null) {
       AppMessage.show(context, '로그인 정보가 없습니다.');
-      return;
-    }
-
-    final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(user.userId);
-
-    if (joinedRoom != null) {
-      AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
-      openWaitingRoom(joinedRoom);
       return;
     }
 
     if (room.hasPassword) {
       final password = await showDialog<String>(
         context: context,
-        builder: (context) {
-          return const _PasswordDialog();
-        },
+        builder: (context) => const _PasswordDialog(),
       );
-
-      if (password == null) {
-        return;
-      }
-
-      joinRoom(room: room, userId: user.userId, password: password);
-      return;
+      if (password == null) return;
+      await _joinRoom(room: room, password: password);
+    } else {
+      await _joinRoom(room: room);
     }
-
-    joinRoom(room: room, userId: user.userId);
   }
 
-  void joinRoom({
+  Future<void> _joinRoom({
     required FriendlyRoom room,
-    required String userId,
     String? password,
-  }) {
-    final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(userId);
-
-    if (joinedRoom != null) {
-      AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
-      openWaitingRoom(joinedRoom);
-      return;
-    }
-
-    final result = friendlyMatchService.joinRoom(
+  }) async {
+    final joinRes = await _service.joinRoom(
       roomId: room.id,
-      userId: userId,
       password: password,
     );
 
-    switch (result) {
+    if (!mounted) return;
+
+    switch (joinRes.result) {
       case JoinRoomResult.success:
-        setState(() {});
-        final enteredRoom = rooms.firstWhere((item) => item.id == room.id);
-        AppMessage.show(context, '${enteredRoom.title} 방에 입장했습니다.');
-        openWaitingRoom(enteredRoom);
-        break;
+        final joinedRoom = joinRes.room;
+        if (joinedRoom == null) return;
+        await _loadRooms();
+        if (!mounted) return;
+        AppMessage.show(context, '${joinedRoom.title} 방에 입장했습니다.');
+        _openWaitingRoom(joinedRoom);
 
-      case JoinRoomResult.alreadyJoined:
-        final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(userId);
-
-        if (joinedRoom != null) {
-          AppMessage.show(context, '이미 참여 중인 방입니다.');
-          openWaitingRoom(joinedRoom);
-        } else {
-          AppMessage.show(context, '이미 입장한 방입니다.');
+      case JoinRoomResult.alreadyJoined ||
+            JoinRoomResult.alreadyInOtherRoom:
+        final myRoom = await _service.getMyRoom();
+        if (!mounted) return;
+        if (myRoom != null) {
+          AppMessage.show(context, '이미 참여 중인 방이 있습니다.');
+          _openWaitingRoom(myRoom);
         }
-        break;
-
-      case JoinRoomResult.alreadyInOtherRoom:
-        final joinedRoom = friendlyMatchService.getJoinedRoomByUserId(userId);
-
-        if (joinedRoom != null) {
-          AppMessage.show(context, '이미 다른 방에 참여 중입니다.');
-          openWaitingRoom(joinedRoom);
-        } else {
-          AppMessage.show(context, '이미 다른 방에 참여 중입니다.');
-        }
-        break;
 
       case JoinRoomResult.full:
         AppMessage.show(context, '이미 가득 찬 방입니다.');
-        break;
 
       case JoinRoomResult.passwordRequired:
         AppMessage.show(context, '비밀번호를 입력해주세요.');
-        break;
 
       case JoinRoomResult.wrongPassword:
         AppMessage.show(context, '비밀번호가 일치하지 않습니다.');
-        break;
 
       case JoinRoomResult.roomNotFound:
         AppMessage.show(context, '방을 찾을 수 없습니다.');
-        break;
+        _loadRooms();
+
+      case JoinRoomResult.error:
+        AppMessage.show(context, '입장 중 오류가 발생했습니다.');
     }
   }
 
-  String formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final diff = now.difference(dateTime);
-
-    if (diff.inMinutes < 1) {
-      return '방금 전';
-    }
-
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}분 전';
-    }
-
-    if (diff.inHours < 24) {
-      return '${diff.inHours}시간 전';
-    }
-
+  String _formatTime(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inMinutes < 1) return '방금 전';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
     return '${diff.inDays}일 전';
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentRooms = rooms;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -224,14 +208,14 @@ class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
         title: const Text('친선 대결'),
         actions: [
           IconButton(
-            onPressed: refreshRooms,
+            onPressed: _refreshRooms,
             icon: const Icon(Icons.refresh),
             tooltip: '새로고침',
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: openCreateRoomSheet,
+        onPressed: _openCreateRoomSheet,
         icon: const Icon(Icons.add),
         label: const Text('방 만들기'),
       ),
@@ -242,22 +226,26 @@ class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
             child: _FriendlyGuideCard(),
           ),
           Expanded(
-            child: currentRooms.isEmpty
-                ? const _EmptyRoomView()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 92),
-                    itemBuilder: (context, index) {
-                      final room = currentRooms[index];
-
-                      return _RoomListItem(
-                        room: room,
-                        timeText: formatTime(room.createdAt),
-                        onEnter: () => enterRoom(room),
-                      );
-                    },
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 12),
-                    itemCount: currentRooms.length,
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadRooms,
+                    child: _rooms.isEmpty
+                        ? const _EmptyRoomView()
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 92),
+                            itemBuilder: (context, index) {
+                              final room = _rooms[index];
+                              return _RoomListItem(
+                                room: room,
+                                timeText: _formatTime(room.createdAt),
+                                onEnter: () => _enterRoom(room),
+                              );
+                            },
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemCount: _rooms.length,
+                          ),
                   ),
           ),
         ],
@@ -266,6 +254,7 @@ class _FriendlyMatchScreenState extends State<FriendlyMatchScreen> {
   }
 }
 
+// ── 안내 카드 ──────────────────────────────────────
 class _FriendlyGuideCard extends StatelessWidget {
   const _FriendlyGuideCard();
 
@@ -319,6 +308,7 @@ class _FriendlyGuideCard extends StatelessWidget {
   }
 }
 
+// ── 방 목록 아이템 ─────────────────────────────────
 class _RoomListItem extends StatelessWidget {
   final FriendlyRoom room;
   final String timeText;
@@ -342,9 +332,8 @@ class _RoomListItem extends StatelessWidget {
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isFull
-              ? Colors.redAccent
-              : colorScheme.primary.withOpacity(0.25),
+          color:
+              isFull ? Colors.redAccent : colorScheme.primary.withOpacity(0.25),
         ),
       ),
       child: Column(
@@ -496,18 +485,24 @@ class _EmptyRoomView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Center(
-      child: Text(
-        '아직 생성된 친선 대결 방이 없습니다.',
-        style: TextStyle(
-          fontSize: 15,
-          color: colorScheme.onSurface.withOpacity(0.55),
+    return ListView(
+      children: [
+        SizedBox(height: 120),
+        Center(
+          child: Text(
+            '아직 생성된 친선 대결 방이 없습니다.',
+            style: TextStyle(
+              fontSize: 15,
+              color: colorScheme.onSurface.withOpacity(0.55),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
 
+// ── 방 만들기 Bottom Sheet ──────────────────────────
 class _CreateRoomSheet extends StatefulWidget {
   final void Function({required String title, required String? password})
   onSubmit;
@@ -519,49 +514,40 @@ class _CreateRoomSheet extends StatefulWidget {
 }
 
 class _CreateRoomSheetState extends State<_CreateRoomSheet> {
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  bool usePassword = false;
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _passwordCtrl = TextEditingController();
+  bool _usePassword = false;
 
   @override
   void dispose() {
-    titleController.dispose();
-    passwordController.dispose();
+    _titleCtrl.dispose();
+    _passwordCtrl.dispose();
     super.dispose();
   }
 
-  void submit() {
-    final title = titleController.text.trim();
-    final password = passwordController.text.trim();
-
-    if (title.isEmpty) {
-      AppMessage.show(context, '방 제목을 입력해주세요.');
-      return;
-    }
+  void _submit() {
+    final title = _titleCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
 
     if (title.length < 2) {
       AppMessage.show(context, '방 제목은 2자 이상 입력해주세요.');
       return;
     }
-
-    if (usePassword && password.length < 4) {
+    if (_usePassword && password.length < 4) {
       AppMessage.show(context, '비밀번호는 4자 이상 입력해주세요.');
       return;
     }
 
-    widget.onSubmit(title: title, password: usePassword ? password : null);
+    widget.onSubmit(title: title, password: _usePassword ? password : null);
   }
 
-  InputDecoration inputDecoration({
-    required BuildContext context,
+  InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
     String? hint,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
     return InputDecoration(
       labelText: label,
       hintText: hint,
@@ -579,12 +565,11 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         decoration: BoxDecoration(
@@ -614,10 +599,9 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               ),
               const SizedBox(height: 20),
               TextField(
-                controller: titleController,
+                controller: _titleCtrl,
                 textInputAction: TextInputAction.next,
-                decoration: inputDecoration(
-                  context: context,
+                decoration: _inputDecoration(
                   label: '방 제목',
                   hint: '예: 친구랑 한 판',
                   icon: Icons.title,
@@ -625,16 +609,13 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               ),
               const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: SwitchListTile(
-                  value: usePassword,
+                  value: _usePassword,
                   contentPadding: EdgeInsets.zero,
                   activeColor: colorScheme.primary,
                   title: Text(
@@ -650,22 +631,17 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                       color: colorScheme.onSurface.withOpacity(0.65),
                     ),
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      usePassword = value;
-                    });
-                  },
+                  onChanged: (v) => setState(() => _usePassword = v),
                 ),
               ),
-              if (usePassword) ...[
+              if (_usePassword) ...[
                 const SizedBox(height: 14),
                 TextField(
-                  controller: passwordController,
+                  controller: _passwordCtrl,
                   obscureText: true,
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => submit(),
-                  decoration: inputDecoration(
-                    context: context,
+                  onSubmitted: (_) => _submit(),
+                  decoration: _inputDecoration(
                     label: '방 비밀번호',
                     hint: '4자 이상 입력하세요',
                     icon: Icons.lock_outline,
@@ -677,7 +653,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: submit,
+                  onPressed: _submit,
                   child: const Text(
                     '방 만들기',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -692,6 +668,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
   }
 }
 
+// ── 비밀번호 입력 다이얼로그 ────────────────────────
 class _PasswordDialog extends StatefulWidget {
   const _PasswordDialog();
 
@@ -700,23 +677,21 @@ class _PasswordDialog extends StatefulWidget {
 }
 
 class _PasswordDialogState extends State<_PasswordDialog> {
-  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController _ctrl = TextEditingController();
 
   @override
   void dispose() {
-    passwordController.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
-  void submit() {
-    final password = passwordController.text.trim();
-
-    if (password.isEmpty) {
+  void _submit() {
+    final pw = _ctrl.text.trim();
+    if (pw.isEmpty) {
       AppMessage.show(context, '비밀번호를 입력해주세요.');
       return;
     }
-
-    Navigator.pop(context, password);
+    Navigator.pop(context, pw);
   }
 
   @override
@@ -735,11 +710,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       content: TextField(
-        controller: passwordController,
+        controller: _ctrl,
         obscureText: true,
         autofocus: true,
         textInputAction: TextInputAction.done,
-        onSubmitted: (_) => submit(),
+        onSubmitted: (_) => _submit(),
         decoration: InputDecoration(
           labelText: '방 비밀번호',
           prefixIcon: const Icon(Icons.lock_outline),
@@ -756,7 +731,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        ElevatedButton(onPressed: submit, child: const Text('입장')),
+        ElevatedButton(onPressed: _submit, child: const Text('입장')),
       ],
     );
   }
