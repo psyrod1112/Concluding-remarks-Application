@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 /// - 웹 브라우저 / iOS 시뮬레이터: localhost
 /// - Android 에뮬레이터: 10.0.2.2 (에뮬레이터에서 호스트 PC를 가리키는 주소)
 /// - 실제 기기: 서버 PC의 로컬 IP (예: 192.168.0.10)
-const String _baseUrl = 'http://localhost:3000';
+const String _baseUrl = 'http://43.201.247.193';
 
 class ApiClient {
   static String? _accessToken;
