@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS room_participants (
 );
 
 CREATE INDEX IF NOT EXISTS idx_room_participants_user_id ON room_participants (user_id);
+
+-- words 테이블 (끝말잇기 사전)
+CREATE TABLE IF NOT EXISTS words (
+    word   VARCHAR(10) PRIMARY KEY,
+    length SMALLINT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
 `;
 
 async function migrate() {
