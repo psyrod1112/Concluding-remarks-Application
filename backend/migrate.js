@@ -100,6 +100,20 @@ SELECT
     END AS win_rate
 FROM users
 WHERE is_active = true;
+
+-- words 테이블 (끝말잇기 사전)
+CREATE TABLE IF NOT EXISTS words (
+    word        VARCHAR(20) PRIMARY KEY,
+    length      INTEGER NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_words_length_match
+        CHECK (length = char_length(word)),
+    CONSTRAINT chk_words_length_positive
+        CHECK (length >= 1)
+);
+
+CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
 `;
 
 async function migrate() {
