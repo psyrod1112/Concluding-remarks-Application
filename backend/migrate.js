@@ -80,47 +80,27 @@ CREATE TABLE IF NOT EXISTS words (
 );
 
 CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
--- ============================================================
--- 003_games_and_ranking.sql
--- games 테이블 (경기 기록) + v_user_ranking 뷰 + 점수 인덱스
--- 멱등 실행: IF NOT EXISTS / CREATE OR REPLACE 사용
--- ============================================================
 
--- ── games 테이블 ────────────────────────────────────────────
--- 종료된 1:1 끝말잇기 경기 1건 = 1 row
--- word_chain: 그 경기에서 이어진 단어 배열 (JSONB)
-CREATE TABLE IF NOT EXISTS games (
-    id            SERIAL PRIMARY KEY,
-    room_id       INTEGER     REFERENCES game_rooms(id) ON DELETE SET NULL,
-    winner_id     UUID        REFERENCES users(id) ON DELETE SET NULL,
-    loser_id      UUID        REFERENCES users(id) ON DELETE SET NULL,
-    word_chain    JSONB       NOT NULL DEFAULT '[]'::jsonb,
-    turn_count    INTEGER     NOT NULL DEFAULT 0,
-    winner_score_delta INTEGER NOT NULL DEFAULT 0,  -- 이 경기로 인한 ELO 변동(+)
-    loser_score_delta  INTEGER NOT NULL DEFAULT 0,  -- 이 경기로 인한 ELO 변동(-)
-    ended_reason  VARCHAR(20) NOT NULL DEFAULT 'normal'
-        CHECK (ended_reason IN ('normal', 'timeout', 'disconnect', 'surrender')),
-    started_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    ended_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    -- 승자와 패자는 서로 달라야 함 (둘 다 NULL인 무효 경기는 허용 안 함)
+-- game_logs: 경기 기록 (websocket gameSession.js의 INSERT와 컬럼 일치)
+CREATE TABLE IF NOT EXISTS game_logs (
+    id                   SERIAL PRIMARY KEY,
+    winner_id            UUID REFERENCES users(id) ON DELETE SET NULL,
+    loser_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+    winner_score_change  INTEGER NOT NULL DEFAULT 0,
+    played_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT chk_winner_not_loser CHECK (winner_id IS DISTINCT FROM loser_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_games_winner_id ON games (winner_id);
-CREATE INDEX IF NOT EXISTS idx_games_loser_id  ON games (loser_id);
-CREATE INDEX IF NOT EXISTS idx_games_ended_at  ON games (ended_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_logs_winner   ON game_logs (winner_id);
+CREATE INDEX IF NOT EXISTS idx_game_logs_loser    ON game_logs (loser_id);
+CREATE INDEX IF NOT EXISTS idx_game_logs_played   ON game_logs (played_at DESC);
 
--- ── 활성 유저 점수 정렬용 부분 인덱스 ───────────────────────
--- 랭킹 조회는 항상 is_active = TRUE만 대상으로 하므로 부분 인덱스로 효율화
--- 동점 시 먼저 가입한 유저가 상위 (created_at ASC)
+-- 활성 유저 점수 정렬용 부분 인덱스
 CREATE INDEX IF NOT EXISTS idx_users_ranking
     ON users (score DESC, created_at ASC)
     WHERE is_active = TRUE;
 
--- ── v_user_ranking 뷰 ───────────────────────────────────────
--- 랭킹 + 승률 + 총 경기 수를 한 번에 제공
--- win_rate: 경기 기록이 없으면 0 (0으로 나누기 방지)
+-- v_user_ranking: 랭킹 뷰 (rank/win_rate/total_games)
 CREATE OR REPLACE VIEW v_user_ranking AS
 SELECT
     ROW_NUMBER() OVER (ORDER BY score DESC, created_at ASC) AS rank,
@@ -136,7 +116,6 @@ SELECT
     END AS win_rate
 FROM users
 WHERE is_active = TRUE;
-
 `;
 
 async function migrate() {
