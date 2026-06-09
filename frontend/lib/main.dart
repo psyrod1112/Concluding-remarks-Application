@@ -10,6 +10,7 @@ import 'screens/random_match_screen.dart';
 import 'screens/community_screen.dart';
 import 'screens/friendly_match_screen.dart';
 import 'screens/game_screen.dart';
+import 'screens/ai_battle_screen.dart';
 
 void main() {
   runApp(const WordLegendApp());
@@ -37,6 +38,7 @@ class WordLegendApp extends StatelessWidget {
             '/random-match': (context) => const RandomMatchScreen(),
             '/friendly-match': (context) => const FriendlyMatchScreen(),
             '/community': (context) => const CommunityScreen(),
+            '/ai-battle': (context) => const AiBattleScreen(),
             '/game': (context) => const GameScreen(),
           },
         );

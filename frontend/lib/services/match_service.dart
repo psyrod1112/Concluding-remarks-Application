@@ -1,4 +1,6 @@
-import 'dart:math';
+import 'dart:async';
+
+import 'game_socket_service.dart';
 
 class MatchedPlayer {
   final String userId;
@@ -14,51 +16,84 @@ class MatchedPlayer {
     required this.winCount,
     required this.loseCount,
   });
+
+  factory MatchedPlayer.fromJson(dynamic json) {
+    if (json is Map) {
+      return MatchedPlayer(
+        userId: json['userId']?.toString() ?? '',
+        nickname: json['nickname']?.toString() ?? '상대방',
+        score: int.tryParse(json['score']?.toString() ?? '') ?? 0,
+        winCount: int.tryParse(json['winCount']?.toString() ?? '') ?? 0,
+        loseCount: int.tryParse(json['loseCount']?.toString() ?? '') ?? 0,
+      );
+    }
+
+    return MatchedPlayer(
+      userId: '',
+      nickname: json?.toString() ?? '상대방',
+      score: 0,
+      winCount: 0,
+      loseCount: 0,
+    );
+  }
+}
+
+class MatchedRoom {
+  final String roomId;
+  final MatchedPlayer opponent;
+  final bool isMyTurn;
+
+  MatchedRoom({
+    required this.roomId,
+    required this.opponent,
+    required this.isMyTurn,
+  });
 }
 
 class MatchService {
-  final List<MatchedPlayer> _mockPlayers = [
-    MatchedPlayer(
-      userId: 'apple_king',
-      nickname: '사과왕',
-      score: 1200,
-      winCount: 8,
-      loseCount: 3,
-    ),
-    MatchedPlayer(
-      userId: 'word_master',
-      nickname: '끝말고수',
-      score: 1540,
-      winCount: 14,
-      loseCount: 5,
-    ),
-    MatchedPlayer(
-      userId: 'banana_user',
-      nickname: '바나나킥',
-      score: 980,
-      winCount: 4,
-      loseCount: 6,
-    ),
-    MatchedPlayer(
-      userId: 'legend_001',
-      nickname: '레전드초보',
-      score: 760,
-      winCount: 2,
-      loseCount: 9,
-    ),
-  ];
+  final GameSocketService _socket = GameSocketService.instance;
 
-  Future<MatchedPlayer> findRandomOpponent() async {
-    // TODO: 나중에 Node.js 백엔드 랜덤 매칭 API 또는 Socket.IO 연결
-    // 예: socket.emit('join_random_queue')
-    await Future.delayed(const Duration(seconds: 2));
+  Future<MatchedRoom> findRandomOpponent() async {
+    final completer = Completer<MatchedRoom>();
+    StreamSubscription<Map<String, dynamic>>? subscription;
 
-    final random = Random();
-    return _mockPlayers[random.nextInt(_mockPlayers.length)];
+    subscription = _socket.messages.listen((message) {
+      final type = message['type']?.toString();
+
+      if (type == 'match_found') {
+        if (!completer.isCompleted) {
+          completer.complete(
+            MatchedRoom(
+              roomId: message['roomId']?.toString() ?? '',
+              opponent: MatchedPlayer.fromJson(message['opponent']),
+              isMyTurn: message['isMyTurn'] == true,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (type == 'auth_fail' || type == 'error') {
+        if (!completer.isCompleted) {
+          completer.completeError(
+            Exception(message['message']?.toString() ?? '매칭 중 오류가 발생했습니다.'),
+          );
+        }
+      }
+    });
+
+    try {
+      await _socket.connectAndAuth();
+      _socket.joinQueue();
+      return await completer.future.timeout(const Duration(minutes: 5));
+    } finally {
+      await subscription?.cancel();
+    }
   }
 
   Future<void> cancelMatching() async {
-    // TODO: 나중에 백엔드 매칭 큐 취소 API 연결
-    await Future.delayed(const Duration(milliseconds: 300));
+    if (_socket.isConnected) {
+      _socket.leaveQueue();
+    }
   }
 }

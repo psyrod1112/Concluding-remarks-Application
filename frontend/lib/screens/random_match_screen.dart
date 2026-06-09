@@ -15,24 +15,41 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
   final MatchService matchService = MatchService();
 
   bool isSearching = false;
-  MatchedPlayer? matchedPlayer;
+  MatchedRoom? matchedRoom;
 
   Future<void> startMatching() async {
+    final currentUser = AuthService().getCurrentUser();
+
+    if (currentUser == null) {
+      AppMessage.show(context, '로그인 후 랜덤 매칭을 이용할 수 있습니다.');
+      return;
+    }
+
     setState(() {
       isSearching = true;
-      matchedPlayer = null;
+      matchedRoom = null;
     });
 
-    final opponent = await matchService.findRandomOpponent();
+    try {
+      final room = await matchService.findRandomOpponent();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      isSearching = false;
-      matchedPlayer = opponent;
-    });
+      setState(() {
+        isSearching = false;
+        matchedRoom = room;
+      });
 
-    AppMessage.show(context, '${opponent.nickname}님과 매칭되었습니다.');
+      AppMessage.show(context, '${room.opponent.nickname}님과 매칭되었습니다.');
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isSearching = false;
+      });
+
+      AppMessage.show(context, e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> cancelMatching() async {
@@ -47,19 +64,21 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
     AppMessage.show(context, '랜덤 매칭을 취소했습니다.');
   }
 
-  // TODO: 백엔드 연결 후 실제 매칭 성공 응답의 roomId를 넘기기
-  // 예: 'roomId': matchedRoom.roomId
   void enterGameRoom() {
+    final room = matchedRoom;
+    if (room == null) return;
+
     Navigator.pushNamed(
       context,
       '/game',
       arguments: {
-        'roomId': 'mock-random-room',
+        'roomId': room.roomId,
         'roomType': 'random',
         'roomTitle': '랜덤 매칭',
-        'opponentId': matchedPlayer?.userId ?? 'mock-opponent',
-        'opponentNickname': matchedPlayer?.nickname ?? '상대방',
-        'isMockMode': true,
+        'opponentId': room.opponent.userId,
+        'opponentNickname': room.opponent.nickname,
+        'isMyTurn': room.isMyTurn,
+        'isMockMode': false,
       },
     );
   }
@@ -102,8 +121,8 @@ class _RandomMatchScreenState extends State<RandomMatchScreen> {
                 ),
               ),
             ),
-          ] else if (matchedPlayer != null) ...[
-            _MatchedPlayerCard(player: matchedPlayer!),
+          ] else if (matchedRoom != null) ...[
+            _MatchedPlayerCard(player: matchedRoom!.opponent),
             const SizedBox(height: 24),
             SizedBox(
               height: 52,
@@ -235,12 +254,12 @@ class _MatchGuideCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            '현재는 프론트 테스트용 임시 매칭입니다.',
+            '접속 중인 사용자와 자동으로 매칭됩니다.',
             style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
           ),
           const SizedBox(height: 8),
           Text(
-            '나중에 백엔드가 연결되면 실시간 접속자 중 한 명과 자동으로 매칭됩니다.',
+            '매칭이 완료되면 상대의 전적과 점수를 확인한 뒤 게임방에 입장할 수 있습니다.',
             style: TextStyle(
               fontSize: 14,
               color: colorScheme.onSurface.withOpacity(0.65),
@@ -287,7 +306,7 @@ class _SearchingCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '실시간 끝말잇기 대전 상대를 검색하고 있습니다.',
+            '접속 중인 끝말잇기 대전 상대를 검색하고 있습니다.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -348,7 +367,7 @@ class _MatchedPlayerCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'ID: ${player.userId}',
+            player.userId.isEmpty ? 'ID 정보 없음' : 'ID: ${player.userId}',
             style: TextStyle(color: colorScheme.onSurface.withOpacity(0.65)),
           ),
           const SizedBox(height: 18),

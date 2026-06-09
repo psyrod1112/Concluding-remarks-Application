@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/ai_difficulty.dart';
 import '../services/auth_service.dart';
+import '../services/game_socket_service.dart';
 import '../utils/app_message.dart';
 
 class GameScreen extends StatefulWidget {
@@ -13,11 +15,12 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
-  // 임시
-  String roomId = 'mock-room';
-  String roomType = 'mock';
-  String opponentId = 'mock-opponent';
-  bool isMockMode = true;
+  String roomId = '';
+  String roomType = 'random';
+  String opponentId = '';
+  bool isMockMode = false;
+  AiDifficulty? aiDifficulty;
+  int turnTimeLimitSeconds = 30;
 
   final TextEditingController wordController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -26,24 +29,21 @@ class _GameScreenState extends State<GameScreen> {
   String opponentNickname = '상대방';
 
   bool isLoadedArguments = false;
-  bool isMyTurn = true;
+  bool isListeningSocket = false;
+  bool isMyTurn = false;
   bool isOpponentThinking = false;
+  bool isGameOver = false;
 
   int myScore = 0;
   int opponentScore = 0;
   int remainingSeconds = 30;
 
-  Timer? turnTimer;
+  StreamSubscription<Map<String, dynamic>>? socketSubscription;
 
-  // MOCK START: 백엔드 연결 전까지 화면 테스트용으로만 사용하는 임시 데이터
-  // 실제 백엔드 연결 후에는 서버에서 현재 단어, 사용 단어 목록, 점수, 턴 정보를 받아와야 함
-  final List<String> usedWords = ['사과'];
+  final List<String> usedWords = [];
+  final List<GameMessage> messages = [];
 
-  final List<GameMessage> messages = [
-    GameMessage(text: '게임이 시작되었습니다.', type: GameMessageType.system),
-    GameMessage(text: '시작 단어: 사과', type: GameMessageType.system),
-  ];
-  // MOCK END
+  String? currentWord;
 
   @override
   void didChangeDependencies() {
@@ -54,67 +54,227 @@ class _GameScreenState extends State<GameScreen> {
     final arguments = ModalRoute.of(context)?.settings.arguments;
 
     if (arguments is Map<String, dynamic>) {
-      roomId = arguments['roomId'] ?? roomId;
-      roomType = arguments['roomType'] ?? roomType;
-      roomTitle = arguments['roomTitle'] ?? roomTitle;
-      opponentId = arguments['opponentId'] ?? opponentId;
-      opponentNickname = arguments['opponentNickname'] ?? opponentNickname;
-      isMockMode = arguments['isMockMode'] ?? isMockMode;
+      roomId = arguments['roomId']?.toString() ?? roomId;
+      roomType = arguments['roomType']?.toString() ?? roomType;
+      roomTitle = arguments['roomTitle']?.toString() ?? roomTitle;
+      opponentId = arguments['opponentId']?.toString() ?? opponentId;
+      opponentNickname =
+          arguments['opponentNickname']?.toString() ?? opponentNickname;
+      isMockMode = arguments['isMockMode'] == true;
+      isMyTurn = arguments['isMyTurn'] == true;
+      aiDifficulty = aiDifficultyFromId(arguments['difficultyId']?.toString());
+      turnTimeLimitSeconds = int.tryParse(
+            arguments['turnTimeLimitSeconds']?.toString() ?? '',
+          ) ??
+          aiDifficulty?.turnTimeLimitSeconds ??
+          30;
     }
 
     isLoadedArguments = true;
-    startTimer();
+
+    if (isMockMode) {
+      messages.add(
+        const GameMessage(
+          text: '게임 서버 연결 후 실제 대결이 진행됩니다.',
+          type: GameMessageType.system,
+        ),
+      );
+    } else {
+      listenToSocket();
+      messages.add(
+        GameMessage(
+          text: isMyTurn ? '첫 단어를 입력하세요.' : '상대방의 입력을 기다리는 중입니다.',
+          type: GameMessageType.system,
+        ),
+      );
+    }
+
   }
 
   @override
   void dispose() {
     wordController.dispose();
     scrollController.dispose();
-    turnTimer?.cancel();
+    socketSubscription?.cancel();
     super.dispose();
   }
 
-  void startTimer() {
-    turnTimer?.cancel();
+  void listenToSocket() {
+    if (isListeningSocket) return;
+    isListeningSocket = true;
 
-    setState(() {
-      remainingSeconds = 30;
-    });
+    socketSubscription = GameSocketService.instance.messages.listen((message) {
+      final type = message['type']?.toString();
 
-    turnTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-
-      if (!isMyTurn || isOpponentThinking) return;
-
-      if (remainingSeconds <= 0) {
-        timer.cancel();
-        handleTimeout();
-        return;
+      switch (type) {
+        case 'game_start':
+          handleGameStart(message);
+          break;
+        case 'turn_start':
+          handleTurnStart(message);
+          break;
+        case 'timer_tick':
+          handleTimerTick(message);
+          break;
+        case 'word_accepted':
+          handleWordAccepted(message);
+          break;
+        case 'word_invalid':
+          AppMessage.show(context, message['reason']?.toString() ?? '사용할 수 없는 단어입니다.');
+          break;
+        case 'timeout':
+          handleServerTimeout(message);
+          break;
+        case 'game_over':
+          handleGameOver(message);
+          break;
+        case 'opponent_disconnected':
+          setState(() {
+            isGameOver = true;
+            messages.add(
+              GameMessage(
+                text: message['message']?.toString() ?? '상대방 연결이 끊어졌습니다.',
+                type: GameMessageType.system,
+              ),
+            );
+          });
+          break;
+        case 'socket_closed':
+          if (!isGameOver && mounted) {
+            AppMessage.show(context, '게임 서버 연결이 종료되었습니다.');
+          }
+          break;
       }
-
-      setState(() {
-        remainingSeconds--;
-      });
     });
   }
 
-  void handleTimeout() {
+  void handleGameStart(Map<String, dynamic> message) {
+    final turnTime = int.tryParse(message['turnTime']?.toString() ?? '');
+
     setState(() {
-      isMyTurn = false;
+      if (turnTime != null) {
+        turnTimeLimitSeconds = turnTime;
+        remainingSeconds = turnTime;
+      }
       messages.add(
         const GameMessage(
-          text: '시간 초과로 턴이 넘어갔습니다.',
+          text: '게임이 시작되었습니다.',
+          type: GameMessageType.system,
+        ),
+      );
+    });
+  }
+
+  void handleTurnStart(Map<String, dynamic> message) {
+    final user = AuthService().getCurrentUser();
+    final turnNickname = message['turn']?.toString();
+    final turnUserId = message['turnUserId']?.toString() ??
+        message['turnPlayerId']?.toString() ??
+        message['turnId']?.toString();
+    final lastWord = message['lastWord']?.toString();
+    final timeLimit = int.tryParse(message['timeLimit']?.toString() ?? '');
+    final serverRemainingSeconds = int.tryParse(
+      message['remainingSeconds']?.toString() ?? '',
+    );
+
+    setState(() {
+      if (lastWord != null && lastWord.isNotEmpty) {
+        currentWord = lastWord;
+      }
+      if (timeLimit != null) {
+        turnTimeLimitSeconds = timeLimit;
+      }
+      isMyTurn = turnUserId != null && turnUserId.isNotEmpty
+          ? turnUserId == user?.userId
+          : turnNickname == user?.nickname;
+      isOpponentThinking = false;
+      remainingSeconds = serverRemainingSeconds ?? turnTimeLimitSeconds;
+    });
+  }
+
+  void handleTimerTick(Map<String, dynamic> message) {
+    final serverRemainingSeconds = int.tryParse(
+      message['remainingSeconds']?.toString() ??
+          message['secondsLeft']?.toString() ??
+          message['timeLeft']?.toString() ??
+          '',
+    );
+
+    if (serverRemainingSeconds == null) return;
+
+    setState(() {
+      remainingSeconds = serverRemainingSeconds;
+    });
+  }
+
+  void handleWordAccepted(Map<String, dynamic> message) {
+    final user = AuthService().getCurrentUser();
+    final word = message['word']?.toString() ?? '';
+    final submittedBy = message['submittedBy']?.toString();
+    final isMine = submittedBy == user?.nickname;
+
+    if (word.isEmpty) return;
+
+    setState(() {
+      if (!usedWords.contains(word)) {
+        usedWords.add(word);
+      }
+      currentWord = word;
+
+      if (isMine) {
+        myScore += word.length * 10;
+      } else {
+        opponentScore += word.length * 10;
+      }
+
+      messages.add(
+        GameMessage(
+          text: word,
+          type: isMine ? GameMessageType.mine : GameMessageType.opponent,
+        ),
+      );
+    });
+
+    scrollToBottom();
+  }
+
+  void handleServerTimeout(Map<String, dynamic> message) {
+    final player = message['player']?.toString() ?? '플레이어';
+    final livesLeft = message['livesLeft']?.toString();
+
+    setState(() {
+      messages.add(
+        GameMessage(
+          text: livesLeft == null ? '$player 시간 초과' : '$player 시간 초과 · 남은 기회 $livesLeft',
           type: GameMessageType.system,
         ),
       );
     });
 
-    AppMessage.show(context, '시간이 초과되었습니다.');
+    scrollToBottom();
+  }
 
-    // MOCK START: 백엔드 연결 전 임시 상대 턴 처리
-    // 실제 연결 후에는 서버에서 시간 초과 처리 결과를 받아와야 함
-    simulateMockOpponentTurn();
-    // MOCK END
+  void handleGameOver(Map<String, dynamic> message) {
+    final winner = message['winner']?.toString() ?? '';
+    final loser = message['loser']?.toString() ?? '';
+    final scoreChange = message['scoreChange']?.toString();
+
+
+    setState(() {
+      isGameOver = true;
+      isMyTurn = false;
+      isOpponentThinking = false;
+      messages.add(
+        GameMessage(
+          text: scoreChange == null || scoreChange.isEmpty
+              ? '게임 종료 · 승리 $winner / 패배 $loser'
+              : '게임 종료 · 승리 $winner / 패배 $loser · 점수 변동 $scoreChange',
+          type: GameMessageType.system,
+        ),
+      );
+    });
+
+    scrollToBottom();
   }
 
   void submitWord() {
@@ -130,108 +290,32 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
 
-    // MOCK START: 백엔드 연결 전 임시 중복 검사
-    // 실제 연결 후에는 백엔드에서 중복 단어 여부를 판정해야 함
     if (usedWords.contains(word)) {
       AppMessage.show(context, '이미 사용한 단어입니다.');
       return;
     }
-    // MOCK END
 
-    // TODO: 백엔드 연결 시 이 위치에서 단어 제출 API 호출
-    //
-    // 예시 엔드포인트:
-    // POST /api/game/rooms/{roomId}/words
-    //
-    // 요청 예시:
-    // {
-    //   "word": word
-    // }
-    //
-    // 백엔드에서 처리해야 할 것:
-    // 1. 실제 존재하는 단어인지 검사
-    // 2. 끝말잇기 규칙 검사
-    // 3. 두음법칙 처리
-    // 4. 중복 단어 검사
-    // 5. 점수 계산
-    // 6. 턴 변경
-    //
-    // 프론트는 서버 응답을 받아 화면만 갱신하면 됨
-
-    // MOCK START: 백엔드 연결 전 임시 화면 업데이트
-    // 실제 연결 후에는 서버 응답값으로 messages, score, turn 상태를 갱신해야 함
-    setState(() {
-      usedWords.add(word);
-      myScore += word.length * 10;
-      isMyTurn = false;
-      wordController.clear();
-
-      messages.add(GameMessage(text: word, type: GameMessageType.mine));
-    });
-
-    scrollToBottom();
-    simulateMockOpponentTurn();
-    // MOCK END
-  }
-
-  // MOCK START: 백엔드 연결 전까지 상대가 단어를 입력한 것처럼 보이게 하는 임시 함수
-  // 실제 게임에서는 Socket.IO 또는 API 응답으로 상대 입력 결과를 받아와야 함
-  Future<void> simulateMockOpponentTurn() async {
-    setState(() {
-      isOpponentThinking = true;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 900));
-
-    if (!mounted) return;
-
-    final mockWord = getMockOpponentWord();
-
-    setState(() {
-      usedWords.add(mockWord);
-      opponentScore += mockWord.length * 10;
-      isOpponentThinking = false;
-      isMyTurn = true;
-
-      messages.add(GameMessage(text: mockWord, type: GameMessageType.opponent));
-    });
-
-    scrollToBottom();
-    startTimer();
-  }
-
-  String getMockOpponentWord() {
-    final mockWords = [
-      '과자',
-      '자동차',
-      '차고',
-      '고래',
-      '래퍼',
-      '퍼즐',
-      '즐거움',
-      '음악',
-      '악기',
-      '기차',
-    ];
-
-    for (final word in mockWords) {
-      if (!usedWords.contains(word)) {
-        return word;
-      }
+    if (isMockMode) {
+      AppMessage.show(context, '게임 서버 연결 후 입력할 수 있습니다.');
+      return;
     }
 
-    return '끝말';
+    try {
+      GameSocketService.instance.submitWord(word);
+      wordController.clear();
+    } catch (e) {
+      AppMessage.show(context, e.toString().replaceFirst('Exception: ', ''));
+    }
   }
-  // MOCK END
 
   String getCurrentLastLetter() {
-    final currentWord = usedWords.last;
+    final word = currentWord;
 
-    if (currentWord.isEmpty) {
+    if (word == null || word.isEmpty) {
       return '';
     }
 
-    return String.fromCharCode(currentWord.runes.last);
+    return String.fromCharCode(word.runes.last);
   }
 
   void scrollToBottom() {
@@ -262,14 +346,17 @@ class _GameScreenState extends State<GameScreen> {
             _ScoreBoard(
               myNickname: user?.nickname ?? '게스트',
               opponentNickname: opponentNickname,
+              opponentLabel: roomType == 'ai' ? 'AI' : '상대',
               myScore: myScore,
               opponentScore: opponentScore,
               remainingSeconds: remainingSeconds,
               isMyTurn: isMyTurn,
               isOpponentThinking: isOpponentThinking,
             ),
+            if (roomType == 'ai' && aiDifficulty != null)
+              _AiBattleStatusCard(difficulty: aiDifficulty!),
             _CurrentWordCard(
-              currentWord: usedWords.last,
+              currentWord: currentWord,
               nextStartLetter: nextStartLetter,
             ),
             Expanded(
@@ -298,13 +385,19 @@ class _GameScreenState extends State<GameScreen> {
                   Expanded(
                     child: TextField(
                       controller: wordController,
-                      enabled: isMyTurn && !isOpponentThinking,
+                      enabled: isMyTurn && !isOpponentThinking && !isGameOver,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => submitWord(),
                       decoration: InputDecoration(
-                        hintText: isMyTurn
-                            ? '$nextStartLetter(으)로 시작하는 단어'
-                            : '상대 턴입니다.',
+                        hintText: isGameOver
+                            ? '게임이 종료되었습니다.'
+                            : isMyTurn
+                                ? nextStartLetter.isEmpty
+                                    ? '첫 단어를 입력하세요'
+                                    : '$nextStartLetter(으)로 시작하는 단어'
+                                : roomType == 'ai'
+                                    ? 'AI 턴입니다.'
+                                    : '상대 턴입니다.',
                         filled: true,
                         fillColor: theme.scaffoldBackgroundColor,
                         border: OutlineInputBorder(
@@ -323,7 +416,7 @@ class _GameScreenState extends State<GameScreen> {
                     width: 52,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: isMyTurn && !isOpponentThinking
+                      onPressed: isMyTurn && !isOpponentThinking && !isGameOver
                           ? submitWord
                           : null,
                       style: ElevatedButton.styleFrom(
@@ -350,6 +443,7 @@ class _ScoreBoard extends StatelessWidget {
   final String opponentNickname;
   final int myScore;
   final int opponentScore;
+  final String opponentLabel;
   final int remainingSeconds;
   final bool isMyTurn;
   final bool isOpponentThinking;
@@ -357,6 +451,7 @@ class _ScoreBoard extends StatelessWidget {
   const _ScoreBoard({
     required this.myNickname,
     required this.opponentNickname,
+    required this.opponentLabel,
     required this.myScore,
     required this.opponentScore,
     required this.remainingSeconds,
@@ -405,10 +500,10 @@ class _ScoreBoard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   isOpponentThinking
-                      ? '상대 생각중'
+                      ? '$opponentLabel 생각중'
                       : isMyTurn
-                      ? '내 턴'
-                      : '상대 턴',
+                          ? '내 턴'
+                          : '$opponentLabel 턴',
                   style: TextStyle(
                     fontSize: 11,
                     color: colorScheme.onSurface.withOpacity(0.65),
@@ -419,7 +514,7 @@ class _ScoreBoard extends StatelessWidget {
           ),
           Expanded(
             child: _PlayerScoreCard(
-              label: '상대',
+              label: opponentLabel,
               nickname: opponentNickname,
               score: opponentScore,
               isActive: !isMyTurn || isOpponentThinking,
@@ -496,8 +591,68 @@ class _PlayerScoreCard extends StatelessWidget {
   }
 }
 
+class _AiBattleStatusCard extends StatelessWidget {
+  final AiDifficulty difficulty;
+
+  const _AiBattleStatusCard({required this.difficulty});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.primary.withOpacity(0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.smart_toy_outlined, color: colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI대결 · ${difficulty.title}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  difficulty.backendMemo,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurface.withOpacity(0.65),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${difficulty.turnTimeLimitSeconds}초 턴',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CurrentWordCard extends StatelessWidget {
-  final String currentWord;
+  final String? currentWord;
   final String nextStartLetter;
 
   const _CurrentWordCard({
@@ -509,6 +664,7 @@ class _CurrentWordCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final hasWord = currentWord != null && currentWord!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -531,7 +687,7 @@ class _CurrentWordCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '현재 단어',
+                  hasWord ? '현재 단어' : '현재 단어 없음',
                   style: TextStyle(
                     fontSize: 12,
                     color: colorScheme.onSurface.withOpacity(0.55),
@@ -539,22 +695,24 @@ class _CurrentWordCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  currentWord,
+                  hasWord ? currentWord! : '첫 단어를 기다리는 중',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: colorScheme.onSurface,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '다음 시작 글자: $nextStartLetter',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+                if (hasWord) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '다음 시작 글자: $nextStartLetter',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -580,8 +738,8 @@ class _MessageBubble extends StatelessWidget {
       alignment: isSystem
           ? Alignment.center
           : isMine
-          ? Alignment.centerRight
-          : Alignment.centerLeft,
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 280),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -589,8 +747,8 @@ class _MessageBubble extends StatelessWidget {
           color: isSystem
               ? colorScheme.onSurface.withOpacity(0.08)
               : isMine
-              ? colorScheme.primary
-              : colorScheme.onSurface.withOpacity(0.10),
+                  ? colorScheme.primary
+                  : colorScheme.onSurface.withOpacity(0.10),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(

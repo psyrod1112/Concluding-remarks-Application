@@ -204,12 +204,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 24),
-                const Text(
-                  '테스트 계정: test1234 / 123456',
-                  style: TextStyle(fontSize: 13, color: Colors.black45),
-                ),
               ],
             ),
           ),

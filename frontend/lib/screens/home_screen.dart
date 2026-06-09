@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
-import '../utils/app_message.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -82,7 +81,7 @@ class HomeScreen extends StatelessWidget {
                   title: 'AI대결',
                   icon: Icons.smart_toy_outlined,
                   onTap: () {
-                    AppMessage.show(context, 'AI대결 화면은 추후 연결 예정입니다.');
+                    Navigator.pushNamed(context, '/ai-battle');
                   },
                 ),
               ],
