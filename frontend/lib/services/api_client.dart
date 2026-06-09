@@ -11,6 +11,16 @@ class ApiClient {
   static String? _accessToken;
   static String? _refreshToken;
 
+  static String get baseUrl => _baseUrl;
+
+  static String? get accessToken => _accessToken;
+
+  static Uri get webSocketUri {
+    final uri = Uri.parse(_baseUrl);
+    final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
+    return uri.replace(scheme: scheme);
+  }
+
   /// 로그인 성공 시 토큰 저장
   static void setTokens({
     required String accessToken,
