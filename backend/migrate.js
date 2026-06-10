@@ -80,6 +80,42 @@ CREATE TABLE IF NOT EXISTS words (
 );
 
 CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
+
+-- game_logs: 경기 기록 (websocket gameSession.js의 INSERT와 컬럼 일치)
+CREATE TABLE IF NOT EXISTS game_logs (
+    id                   SERIAL PRIMARY KEY,
+    winner_id            UUID REFERENCES users(id) ON DELETE SET NULL,
+    loser_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+    winner_score_change  INTEGER NOT NULL DEFAULT 0,
+    played_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT chk_winner_not_loser CHECK (winner_id IS DISTINCT FROM loser_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_logs_winner   ON game_logs (winner_id);
+CREATE INDEX IF NOT EXISTS idx_game_logs_loser    ON game_logs (loser_id);
+CREATE INDEX IF NOT EXISTS idx_game_logs_played   ON game_logs (played_at DESC);
+
+-- 활성 유저 점수 정렬용 부분 인덱스
+CREATE INDEX IF NOT EXISTS idx_users_ranking
+    ON users (score DESC, created_at ASC)
+    WHERE is_active = TRUE;
+
+-- v_user_ranking: 랭킹 뷰 (rank/win_rate/total_games)
+CREATE OR REPLACE VIEW v_user_ranking AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY score DESC, created_at ASC) AS rank,
+    user_id,
+    nickname,
+    score,
+    win_count,
+    lose_count,
+    (win_count + lose_count) AS total_games,
+    CASE
+        WHEN (win_count + lose_count) = 0 THEN 0
+        ELSE ROUND(win_count::numeric / (win_count + lose_count) * 100)
+    END AS win_rate
+FROM users
+WHERE is_active = TRUE;
 `;
 
 async function migrate() {
