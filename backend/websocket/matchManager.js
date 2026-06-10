@@ -1,7 +1,9 @@
 const { createGameSession } = require('./gameSession');
+const pool = require('../src/db/postgres');
 
 // 랜덤 매칭 대기열: [ws, ...]
 const queue = [];
+const friendlyRooms = new Map();
 
 function joinQueue(ws) {
     // 이미 대기 중이면 무시
@@ -47,6 +49,82 @@ function removeFromQueue(ws) {
     }
 }
 
+async function joinRoom(ws, roomId) {
+    const numericRoomId = Number(roomId);
+    if (!Number.isInteger(numericRoomId)) {
+        return send(ws, { type: 'error', message: '잘못된 방 번호입니다.' });
+    }
+
+    const canJoin = await isRoomParticipant(numericRoomId, ws.userId);
+    if (!canJoin) {
+        return send(ws, { type: 'error', message: '참여 중인 친선방이 아닙니다.' });
+    }
+
+    const key = String(numericRoomId);
+    const waiting = friendlyRooms.get(key);
+
+    if (waiting && waiting.userId === ws.userId) {
+        return send(ws, { type: 'room_joined', message: '상대방을 기다리는 중입니다.' });
+    }
+
+    if (waiting && waiting.readyState === waiting.OPEN) {
+        friendlyRooms.delete(key);
+        waiting.pendingFriendlyRoomId = null;
+        ws.pendingFriendlyRoomId = null;
+        createGameSession(`friendly-${key}`, waiting, ws, {
+            roomType: 'friendly',
+            dbRoomId: numericRoomId,
+        });
+        await markRoomPlaying(numericRoomId);
+        return;
+    }
+
+    friendlyRooms.set(key, ws);
+    ws.pendingFriendlyRoomId = key;
+    send(ws, { type: 'room_joined', message: '상대방을 기다리는 중입니다.' });
+    console.log(`[친선] 게임 대기 등록: ${ws.nickname} (방: ${key})`);
+}
+
+function removeFromFriendlyRoom(ws) {
+    const key = ws.pendingFriendlyRoomId;
+    if (!key) return;
+
+    const waiting = friendlyRooms.get(key);
+    if (waiting === ws) {
+        friendlyRooms.delete(key);
+        console.log(`[친선] 연결 끊김으로 게임 대기 제거: ${ws.nickname} (방: ${key})`);
+    }
+    ws.pendingFriendlyRoomId = null;
+}
+
+async function isRoomParticipant(roomId, userId) {
+    const result = await pool.query(
+        `SELECT 1
+         FROM room_participants rp
+         JOIN users u ON u.id = rp.user_id
+         JOIN game_rooms gr ON gr.id = rp.room_id
+         WHERE rp.room_id = $1
+           AND u.user_id = $2
+           AND gr.status IN ('waiting', 'playing')
+         LIMIT 1`,
+        [roomId, userId]
+    );
+    return result.rowCount > 0;
+}
+
+async function markRoomPlaying(roomId) {
+    try {
+        await pool.query(
+            `UPDATE game_rooms
+             SET status = 'playing'
+             WHERE id = $1 AND status = 'waiting'`,
+            [roomId]
+        );
+    } catch (err) {
+        console.error('[친선] 방 상태 변경 실패:', err.message);
+    }
+}
+
 function matchPlayers(ws1, ws2) {
     const roomId = Math.random().toString(36).substring(2, 10).toUpperCase();
 
@@ -80,4 +158,10 @@ function send(ws, payload) {
     }
 }
 
-module.exports = { joinQueue, leaveQueue, removeFromQueue };
+module.exports = {
+    joinQueue,
+    leaveQueue,
+    removeFromQueue,
+    joinRoom,
+    removeFromFriendlyRoom,
+};

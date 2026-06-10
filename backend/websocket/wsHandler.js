@@ -1,5 +1,11 @@
 const jwt = require('jsonwebtoken');
-const { joinQueue, leaveQueue, removeFromQueue } = require('./matchManager');
+const {
+    joinQueue,
+    leaveQueue,
+    removeFromQueue,
+    joinRoom,
+    removeFromFriendlyRoom,
+} = require('./matchManager');
 const { handleWordSubmit, handleDisconnect } = require('./gameSession');
 
 // 인증된 클라이언트 관리: Map<userId, ws>
@@ -43,6 +49,9 @@ function initWebSocket(wss) {
                 case 'leave_queue':
                     leaveQueue(ws);
                     break;
+                case 'join_room':
+                    await joinRoom(ws, packet.roomId);
+                    break;
                 case 'submit_word':
                     await handleWordSubmit(ws, packet);
                     break;
@@ -58,6 +67,7 @@ function initWebSocket(wss) {
                 console.log(`[WS] 연결 종료: ${ws.nickname}`);
             }
             removeFromQueue(ws);
+            removeFromFriendlyRoom(ws);
             handleDisconnect(ws);
         });
 

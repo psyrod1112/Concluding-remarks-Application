@@ -7,9 +7,13 @@ const MAX_LIVES = 5;
 // 활성 게임 세션: Map<roomId, session>
 const sessions = new Map();
 
-function createGameSession(roomId, first, second) {
+function createGameSession(roomId, first, second, options = {}) {
+    const roomType = options.roomType || 'random';
+    const dbRoomId = options.dbRoomId || null;
     const session = {
         roomId,
+        roomType,
+        dbRoomId,
         players: [
             { ws: first,  userId: first.userId,  nickname: first.nickname,  lives: MAX_LIVES },
             { ws: second, userId: second.userId, nickname: second.nickname, lives: MAX_LIVES },
@@ -155,7 +159,7 @@ async function endGame(session, winner, loser) {
         await pool.query(
             `INSERT INTO game_logs
                 (room_id, room_type, winner_id, loser_id, participants, used_words, scores, reason)
-             SELECT NULL, 'random', u1.id, u2.id, $3::jsonb, $4::jsonb, $5::jsonb, $6
+             SELECT $7, $8, u1.id, u2.id, $3::jsonb, $4::jsonb, $5::jsonb, $6
              FROM users u1, users u2
              WHERE u1.user_id = $1 AND u2.user_id = $2`,
             [
@@ -165,6 +169,8 @@ async function endGame(session, winner, loser) {
                 JSON.stringify(Array.from(session.usedWords)),
                 JSON.stringify(scores),
                 'finished',
+                session.dbRoomId,
+                session.roomType,
             ]
         );
     } catch (err) {

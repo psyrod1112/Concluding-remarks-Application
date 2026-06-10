@@ -84,7 +84,7 @@ class _FriendlyWaitingRoomScreenState
             'roomTitle':         room.title,
             'opponentId':        opponent.userId,
             'opponentNickname':  opponent.nickname,
-            'isMockMode':        true,
+            'isMockMode':        false,
           },
         ),
         builder: (context) => const GameScreen(),
