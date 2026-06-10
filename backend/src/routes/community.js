@@ -218,4 +218,133 @@ router.post('/posts/:postId/comments', authMiddleware, async (req, res) => {
     }
 });
 
+// ──────────────────────────────────────────
+// PATCH /api/community/posts/:postId  (인증 필요, 본인 글만)
+// body: { title?, content?, category? }
+// ──────────────────────────────────────────
+router.patch('/posts/:postId', authMiddleware, async (req, res) => {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId))
+        return res.status(400).json({ message: '잘못된 게시글 ID입니다.' });
+
+    const { title, content, category } = req.body;
+
+    if (title === undefined && content === undefined && category === undefined)
+        return res.status(400).json({ message: '수정할 내용을 입력해주세요.' });
+
+    if (title !== undefined && (title.length === 0 || title.length > 100))
+        return res.status(400).json({ message: '제목은 1자 이상 100자 이하여야 합니다.' });
+
+    if (category !== undefined && !VALID_CATEGORIES.includes(category))
+        return res.status(400).json({ message: `카테고리는 ${VALID_CATEGORIES.slice(0, 3).join(', ')} 중 하나여야 합니다.` });
+
+    try {
+        const postResult = await pool.query(
+            'SELECT author_id FROM posts WHERE id = $1',
+            [postId]
+        );
+        if (postResult.rows.length === 0)
+            return res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
+
+        const userResult = await pool.query(
+            'SELECT id FROM users WHERE user_id = $1',
+            [req.user.userId]
+        );
+        if (userResult.rows.length === 0)
+            return res.status(404).json({ message: '유저를 찾을 수 없습니다.' });
+
+        // 본인 글만 수정 가능
+        if (postResult.rows[0].author_id !== userResult.rows[0].id)
+            return res.status(403).json({ message: '본인이 작성한 게시글만 수정할 수 있습니다.' });
+
+        // 전달된 필드만 부분 수정 (COALESCE)
+        const result = await pool.query(
+            `UPDATE posts
+                SET title    = COALESCE($1, title),
+                    content  = COALESCE($2, content),
+                    category = COALESCE($3, category),
+                    updated_at = NOW()
+              WHERE id = $4
+              RETURNING id, title, content, category, view_count, created_at, updated_at`,
+            [title ?? null, content ?? null, category ?? null, postId]
+        );
+
+        return res.json({ message: '게시글 수정 성공', post: result.rows[0] });
+    } catch (err) {
+        console.error('[Community] 게시글 수정 오류:', err.message);
+        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+// ──────────────────────────────────────────
+// DELETE /api/community/posts/:postId  (인증 필요, 본인 글만)
+// 연관 댓글은 FK ON DELETE CASCADE로 함께 삭제됨
+// ──────────────────────────────────────────
+router.delete('/posts/:postId', authMiddleware, async (req, res) => {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId))
+        return res.status(400).json({ message: '잘못된 게시글 ID입니다.' });
+
+    try {
+        const postResult = await pool.query(
+            'SELECT author_id FROM posts WHERE id = $1',
+            [postId]
+        );
+        if (postResult.rows.length === 0)
+            return res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
+
+        const userResult = await pool.query(
+            'SELECT id FROM users WHERE user_id = $1',
+            [req.user.userId]
+        );
+        if (userResult.rows.length === 0)
+            return res.status(404).json({ message: '유저를 찾을 수 없습니다.' });
+
+        if (postResult.rows[0].author_id !== userResult.rows[0].id)
+            return res.status(403).json({ message: '본인이 작성한 게시글만 삭제할 수 있습니다.' });
+
+        await pool.query('DELETE FROM posts WHERE id = $1', [postId]);
+
+        return res.json({ message: '게시글 삭제 성공' });
+    } catch (err) {
+        console.error('[Community] 게시글 삭제 오류:', err.message);
+        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+// ──────────────────────────────────────────
+// DELETE /api/community/comments/:commentId  (인증 필요, 본인 댓글만)
+// ──────────────────────────────────────────
+router.delete('/comments/:commentId', authMiddleware, async (req, res) => {
+    const commentId = parseInt(req.params.commentId);
+    if (isNaN(commentId))
+        return res.status(400).json({ message: '잘못된 댓글 ID입니다.' });
+
+    try {
+        const commentResult = await pool.query(
+            'SELECT author_id FROM comments WHERE id = $1',
+            [commentId]
+        );
+        if (commentResult.rows.length === 0)
+            return res.status(404).json({ message: '댓글을 찾을 수 없습니다.' });
+
+        const userResult = await pool.query(
+            'SELECT id FROM users WHERE user_id = $1',
+            [req.user.userId]
+        );
+        if (userResult.rows.length === 0)
+            return res.status(404).json({ message: '유저를 찾을 수 없습니다.' });
+
+        if (commentResult.rows[0].author_id !== userResult.rows[0].id)
+            return res.status(403).json({ message: '본인이 작성한 댓글만 삭제할 수 있습니다.' });
+
+        await pool.query('DELETE FROM comments WHERE id = $1', [commentId]);
+
+        return res.json({ message: '댓글 삭제 성공' });
+    } catch (err) {
+        console.error('[Community] 댓글 삭제 오류:', err.message);
+        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
 module.exports = router;
