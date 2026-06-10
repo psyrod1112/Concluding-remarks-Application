@@ -81,9 +81,14 @@ class _GameScreenState extends State<GameScreen> {
       );
     } else {
       listenToSocket();
+      connectFriendlyRoomIfNeeded();
       messages.add(
         GameMessage(
-          text: isMyTurn ? '첫 단어를 입력하세요.' : '상대방의 입력을 기다리는 중입니다.',
+          text: roomType == 'friendly'
+              ? '친선방 게임 서버에 입장 중입니다.'
+              : isMyTurn
+                  ? '첫 단어를 입력하세요.'
+                  : '상대방의 입력을 기다리는 중입니다.',
           type: GameMessageType.system,
         ),
       );
@@ -103,6 +108,8 @@ class _GameScreenState extends State<GameScreen> {
     if (isListeningSocket) return;
     isListeningSocket = true;
 
+    final currentContext = context;
+
     socketSubscription = GameSocketService.instance.messages.listen((message) {
       final type = message['type']?.toString();
 
@@ -120,7 +127,11 @@ class _GameScreenState extends State<GameScreen> {
           handleWordAccepted(message);
           break;
         case 'word_invalid':
-          AppMessage.show(context, message['reason']?.toString() ?? '사용할 수 없는 단어입니다.');
+          if (!currentContext.mounted) return;
+          AppMessage.show(
+            currentContext,
+            message['reason']?.toString() ?? '사용할 수 없는 단어입니다.',
+          );
           break;
         case 'timeout':
           handleServerTimeout(message);
@@ -140,12 +151,29 @@ class _GameScreenState extends State<GameScreen> {
           });
           break;
         case 'socket_closed':
-          if (!isGameOver && mounted) {
-            AppMessage.show(context, '게임 서버 연결이 종료되었습니다.');
+          if (!isGameOver && currentContext.mounted) {
+            AppMessage.show(currentContext, '게임 서버 연결이 종료되었습니다.');
           }
           break;
       }
     });
+  }
+
+  Future<void> connectFriendlyRoomIfNeeded() async {
+    if (roomType != 'friendly') return;
+
+    final currentContext = context;
+
+    try {
+      await GameSocketService.instance.connectAndAuth();
+      GameSocketService.instance.joinRoom(roomId);
+    } catch (e) {
+      if (!currentContext.mounted) return;
+      AppMessage.show(
+        currentContext,
+        e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
   }
 
   void handleGameStart(Map<String, dynamic> message) {

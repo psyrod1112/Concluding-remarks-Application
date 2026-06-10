@@ -74,6 +74,13 @@ class GameSocketService {
     _send({'type': 'leave_queue'});
   }
 
+  void joinRoom(String roomId) {
+    _send({
+      'type': 'join_room',
+      'roomId': roomId,
+    });
+  }
+
   void submitWord(String word) {
     _send({
       'type': 'submit_word',
