@@ -2,7 +2,7 @@ const pool = require('./postgres');
 const { client: redis } = require('./redis');
 
 const KEY_PREFIX = 'word:';
-const TTL_INVALID = 3600;  // 없는 단어는 1시간만 캐싱 (크롤러로 추가될 가능성)
+const TTL_INVALID = Number(process.env.WORD_NEGATIVE_TTL) || 60;  // 없는 단어는 짧게 캐싱
 // 있는 단어는 TTL 없음 (영구) — 사전은 안 바뀜
 
 /**

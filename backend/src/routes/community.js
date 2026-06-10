@@ -16,13 +16,17 @@ router.get('/posts', async (req, res) => {
     const offset   = (page - 1) * PAGE_SIZE;
 
     try {
-        const whereClause = category === '전체'
+        const listWhereClause = category === '전체'
             ? ''
             : 'WHERE p.category = $3';
+        const countWhereClause = category === '전체'
+            ? ''
+            : 'WHERE p.category = $1';
 
-        const params = category === '전체'
+        const listParams = category === '전체'
             ? [PAGE_SIZE, offset]
             : [PAGE_SIZE, offset, category];
+        const countParams = category === '전체' ? [] : [category];
 
         const result = await pool.query(
             `SELECT p.id, p.title, p.category, p.view_count,
@@ -30,15 +34,15 @@ router.get('/posts', async (req, res) => {
                     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
              FROM posts p
              JOIN users u ON u.id = p.author_id
-             ${whereClause}
+             ${listWhereClause}
              ORDER BY p.created_at DESC
              LIMIT $1 OFFSET $2`,
-            params
+            listParams
         );
 
         const countResult = await pool.query(
-            `SELECT COUNT(*) FROM posts p ${whereClause}`,
-            category === '전체' ? [] : [category]
+            `SELECT COUNT(*) FROM posts p ${countWhereClause}`,
+            countParams
         );
 
         return res.json({

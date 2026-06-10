@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const { router: authRouter } = require('./src/routes/auth');
 const pool = require('./src/db/postgres');
 const { client: redisClient } = require('./src/db/redis');
+const { initWebSocket } = require('./websocket/wsHandler');
 
 const rankingRouter = require('./src/routes/ranking');
 const gamelogsRouter = require('./src/routes/gamelogs');
@@ -66,21 +67,7 @@ app.get('/health/detail', async (_req, res) => {
 });
 
 // ── WebSocket ─────────────────────────────
-wss.on('connection', (ws) => {
-    console.log('[WS] 클라이언트 연결');
-
-    ws.on('message', (data) => {
-        try {
-            const packet = JSON.parse(data);
-            console.log('[WS] 수신:', packet);
-            // 4주차에 패킷 타입별 분기 추가
-        } catch {
-            ws.send(JSON.stringify({ error: '잘못된 패킷 형식' }));
-        }
-    });
-
-    ws.on('close', () => console.log('[WS] 클라이언트 연결 종료'));
-});
+initWebSocket(wss);
 
 // ── 서버 시작 ─────────────────────────────
 const PORT = process.env.PORT || 3000;
