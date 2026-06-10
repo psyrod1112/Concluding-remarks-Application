@@ -141,13 +141,31 @@ async function endGame(session, winner, loser) {
             [delta, loser.userId]
         );
 
+        const participants = session.players.map((player) => ({
+            userId: player.userId,
+            nickname: player.nickname,
+            lives: player.lives,
+        }));
+        const scores = {
+            [winner.userId]: delta,
+            [loser.userId]: -delta,
+        };
+
         // 게임 로그 저장
         await pool.query(
-            `INSERT INTO game_logs (winner_id, loser_id, winner_score_change, played_at)
-             SELECT u1.id, u2.id, $3, NOW()
+            `INSERT INTO game_logs
+                (room_id, room_type, winner_id, loser_id, participants, used_words, scores, reason)
+             SELECT NULL, 'random', u1.id, u2.id, $3::jsonb, $4::jsonb, $5::jsonb, $6
              FROM users u1, users u2
              WHERE u1.user_id = $1 AND u2.user_id = $2`,
-            [winner.userId, loser.userId, delta]
+            [
+                winner.userId,
+                loser.userId,
+                JSON.stringify(participants),
+                JSON.stringify(Array.from(session.usedWords)),
+                JSON.stringify(scores),
+                'finished',
+            ]
         );
     } catch (err) {
         console.error('[게임] DB 업데이트 실패:', err.message);

@@ -255,8 +255,10 @@ router.post('/:roomId/join', authMiddleware, async (req, res) => {
 
         // 비밀번호 확인
         if (room.password != null) {
-            if (!password)
+            if (!password) {
+                await client.query('ROLLBACK');
                 return res.status(422).json({ message: '비밀번호를 입력해주세요.' });
+            }
             if (room.password !== password) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ message: '비밀번호가 일치하지 않습니다.' });

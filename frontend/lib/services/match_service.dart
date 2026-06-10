@@ -87,7 +87,7 @@ class MatchService {
       _socket.joinQueue();
       return await completer.future.timeout(const Duration(minutes: 5));
     } finally {
-      await subscription?.cancel();
+      await subscription.cancel();
     }
   }
 

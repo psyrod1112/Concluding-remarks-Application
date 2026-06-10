@@ -24,7 +24,7 @@ const path = require('path');
 const readline = require('readline');
 const pool = require('../src/db/postgres');
 
-const CSV_PATH = path.join(__dirname, 'data', 'kr_korean.csv');
+const CSV_PATH = process.argv[2] || path.join(__dirname, 'data', 'kr_korean.csv');
 const BATCH_SIZE = 1000;          // 한 번에 INSERT할 단어 수
 const MIN_LENGTH = 2;             // 최소 글자수
 const MAX_LENGTH = 5;             // 최대 글자수

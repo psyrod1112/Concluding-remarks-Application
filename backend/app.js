@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const { router: authRouter } = require('./src/routes/auth');
 const pool = require('./src/db/postgres');
 const { client: redisClient } = require('./src/db/redis');
+const { initWebSocket } = require('./websocket/wsHandler');
 
 const rankingRouter = require('./src/routes/ranking');
 const gamelogsRouter = require('./src/routes/gamelogs');
