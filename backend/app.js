@@ -12,6 +12,7 @@ const matchesRouter = require('./src/routes/matches');
 const gameRoomsRouter = require('./src/routes/gameRooms');
 const usersRouter = require('./src/routes/users');
 const communityRouter = require('./src/routes/community');
+const { initWebSocket } = require('./websocket/wsHandler');
 
 const app = express();
 const server = http.createServer(app);
@@ -66,21 +67,7 @@ app.get('/health/detail', async (_req, res) => {
 });
 
 // ── WebSocket ─────────────────────────────
-wss.on('connection', (ws) => {
-    console.log('[WS] 클라이언트 연결');
-
-    ws.on('message', (data) => {
-        try {
-            const packet = JSON.parse(data);
-            console.log('[WS] 수신:', packet);
-            // 4주차에 패킷 타입별 분기 추가
-        } catch {
-            ws.send(JSON.stringify({ error: '잘못된 패킷 형식' }));
-        }
-    });
-
-    ws.on('close', () => console.log('[WS] 클라이언트 연결 종료'));
-});
+initWebSocket(wss);
 
 // ── 서버 시작 ─────────────────────────────
 const PORT = process.env.PORT || 3000;
