@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'controllers/theme_controller.dart';
 import 'themes/app_theme.dart';
+import 'widgets/app_background.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
@@ -30,6 +31,9 @@ class WordLegendApp extends StatelessWidget {
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: themeController.themeMode,
+          builder: (context, child) {
+            return AppBackground(child: child ?? const SizedBox.shrink());
+          },
           initialRoute: '/login',
           routes: {
             '/login': (context) => const LoginScreen(),

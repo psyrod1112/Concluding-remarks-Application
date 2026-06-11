@@ -117,11 +117,11 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('회원가입'),
         centerTitle: true,
-        backgroundColor: const Color(0xFFF5F6FA),
+        backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: Center(
