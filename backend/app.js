@@ -13,7 +13,6 @@ const matchesRouter = require('./src/routes/matches');
 const gameRoomsRouter = require('./src/routes/gameRooms');
 const usersRouter = require('./src/routes/users');
 const communityRouter = require('./src/routes/community');
-const { initWebSocket } = require('./websocket/wsHandler');
 
 const app = express();
 const server = http.createServer(app);

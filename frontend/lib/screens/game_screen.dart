@@ -37,6 +37,8 @@ class _GameScreenState extends State<GameScreen> {
   int myScore = 0;
   int opponentScore = 0;
   int remainingSeconds = 30;
+  int myLives = 5;
+  int opponentLives = 5;
 
   StreamSubscription<Map<String, dynamic>>? socketSubscription;
 
@@ -63,9 +65,8 @@ class _GameScreenState extends State<GameScreen> {
       isMockMode = arguments['isMockMode'] == true;
       isMyTurn = arguments['isMyTurn'] == true;
       aiDifficulty = aiDifficultyFromId(arguments['difficultyId']?.toString());
-      turnTimeLimitSeconds = int.tryParse(
-            arguments['turnTimeLimitSeconds']?.toString() ?? '',
-          ) ??
+      turnTimeLimitSeconds =
+          int.tryParse(arguments['turnTimeLimitSeconds']?.toString() ?? '') ??
           aiDifficulty?.turnTimeLimitSeconds ??
           30;
     }
@@ -87,13 +88,12 @@ class _GameScreenState extends State<GameScreen> {
           text: roomType == 'friendly'
               ? '친선방 게임 서버에 입장 중입니다.'
               : isMyTurn
-                  ? '첫 단어를 입력하세요.'
-                  : '상대방의 입력을 기다리는 중입니다.',
+              ? '첫 단어를 입력하세요.'
+              : '상대방의 입력을 기다리는 중입니다.',
           type: GameMessageType.system,
         ),
       );
     }
-
   }
 
   @override
@@ -176,19 +176,58 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
+  int? parseIntValue(dynamic value) {
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
+  bool isMePlayer(Map<dynamic, dynamic> player) {
+    final user = AuthService().getCurrentUser();
+    final playerUserId =
+        player['userId']?.toString() ??
+        player['user_id']?.toString() ??
+        player['id']?.toString();
+    final playerNickname =
+        player['nickname']?.toString() ?? player['name']?.toString();
+
+    if (playerUserId != null && playerUserId.isNotEmpty) {
+      return playerUserId == user?.userId;
+    }
+
+    return playerNickname == user?.nickname;
+  }
+
+  void applyServerLives(dynamic playersData) {
+    if (playersData is! List) return;
+
+    for (final item in playersData) {
+      if (item is! Map) continue;
+
+      final lives = parseIntValue(
+        item['lives'] ?? item['life'] ?? item['livesLeft'],
+      );
+      if (lives == null) continue;
+
+      if (isMePlayer(item)) {
+        myLives = lives;
+      } else {
+        opponentLives = lives;
+      }
+    }
+  }
+
   void handleGameStart(Map<String, dynamic> message) {
     final turnTime = int.tryParse(message['turnTime']?.toString() ?? '');
 
     setState(() {
+      applyServerLives(message['players']);
+
       if (turnTime != null) {
         turnTimeLimitSeconds = turnTime;
         remainingSeconds = turnTime;
       }
       messages.add(
-        const GameMessage(
-          text: '게임이 시작되었습니다.',
-          type: GameMessageType.system,
-        ),
+        const GameMessage(text: '게임이 시작되었습니다.', type: GameMessageType.system),
       );
     });
   }
@@ -196,7 +235,8 @@ class _GameScreenState extends State<GameScreen> {
   void handleTurnStart(Map<String, dynamic> message) {
     final user = AuthService().getCurrentUser();
     final turnNickname = message['turn']?.toString();
-    final turnUserId = message['turnUserId']?.toString() ??
+    final turnUserId =
+        message['turnUserId']?.toString() ??
         message['turnPlayerId']?.toString() ??
         message['turnId']?.toString();
     final lastWord = message['lastWord']?.toString();
@@ -267,13 +307,41 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void handleServerTimeout(Map<String, dynamic> message) {
-    final player = message['player']?.toString() ?? '플레이어';
-    final livesLeft = message['livesLeft']?.toString();
+    final user = AuthService().getCurrentUser();
+    final player =
+        message['player']?.toString() ??
+        message['nickname']?.toString() ??
+        '플레이어';
+    final playerUserId =
+        message['userId']?.toString() ??
+        message['user_id']?.toString() ??
+        message['playerId']?.toString() ??
+        message['playerUserId']?.toString();
+    final livesLeft = parseIntValue(
+      message['livesLeft'] ?? message['lives'] ?? message['life'],
+    );
 
     setState(() {
+      // 목숨은 프론트에서 직접 차감하지 않고, 백엔드가 내려준 값만 반영한다.
+      if (message['players'] is List) {
+        applyServerLives(message['players']);
+      } else if (livesLeft != null) {
+        final isMine = playerUserId != null && playerUserId.isNotEmpty
+            ? playerUserId == user?.userId
+            : player == user?.nickname;
+
+        if (isMine) {
+          myLives = livesLeft;
+        } else {
+          opponentLives = livesLeft;
+        }
+      }
+
       messages.add(
         GameMessage(
-          text: livesLeft == null ? '$player 시간 초과' : '$player 시간 초과 · 남은 기회 $livesLeft',
+          text: livesLeft == null
+              ? '$player 시간 초과'
+              : '$player 시간 초과 · 남은 목숨 $livesLeft',
           type: GameMessageType.system,
         ),
       );
@@ -287,8 +355,8 @@ class _GameScreenState extends State<GameScreen> {
     final loser = message['loser']?.toString() ?? '';
     final scoreChange = message['scoreChange']?.toString();
 
-
     setState(() {
+      applyServerLives(message['players']);
       isGameOver = true;
       isMyTurn = false;
       isOpponentThinking = false;
@@ -377,6 +445,8 @@ class _GameScreenState extends State<GameScreen> {
               opponentLabel: roomType == 'ai' ? 'AI' : '상대',
               myScore: myScore,
               opponentScore: opponentScore,
+              myLives: myLives,
+              opponentLives: opponentLives,
               remainingSeconds: remainingSeconds,
               isMyTurn: isMyTurn,
               isOpponentThinking: isOpponentThinking,
@@ -420,12 +490,12 @@ class _GameScreenState extends State<GameScreen> {
                         hintText: isGameOver
                             ? '게임이 종료되었습니다.'
                             : isMyTurn
-                                ? nextStartLetter.isEmpty
-                                    ? '첫 단어를 입력하세요'
-                                    : '$nextStartLetter(으)로 시작하는 단어'
-                                : roomType == 'ai'
-                                    ? 'AI 턴입니다.'
-                                    : '상대 턴입니다.',
+                            ? nextStartLetter.isEmpty
+                                  ? '첫 단어를 입력하세요'
+                                  : '$nextStartLetter(으)로 시작하는 단어'
+                            : roomType == 'ai'
+                            ? 'AI 턴입니다.'
+                            : '상대 턴입니다.',
                         filled: true,
                         fillColor: theme.scaffoldBackgroundColor,
                         border: OutlineInputBorder(
@@ -471,6 +541,8 @@ class _ScoreBoard extends StatelessWidget {
   final String opponentNickname;
   final int myScore;
   final int opponentScore;
+  final int myLives;
+  final int opponentLives;
   final String opponentLabel;
   final int remainingSeconds;
   final bool isMyTurn;
@@ -482,6 +554,8 @@ class _ScoreBoard extends StatelessWidget {
     required this.opponentLabel,
     required this.myScore,
     required this.opponentScore,
+    required this.myLives,
+    required this.opponentLives,
     required this.remainingSeconds,
     required this.isMyTurn,
     required this.isOpponentThinking,
@@ -506,6 +580,7 @@ class _ScoreBoard extends StatelessWidget {
               label: '나',
               nickname: myNickname,
               score: myScore,
+              lives: myLives,
               isActive: isMyTurn && !isOpponentThinking,
             ),
           ),
@@ -530,8 +605,8 @@ class _ScoreBoard extends StatelessWidget {
                   isOpponentThinking
                       ? '$opponentLabel 생각중'
                       : isMyTurn
-                          ? '내 턴'
-                          : '$opponentLabel 턴',
+                      ? '내 턴'
+                      : '$opponentLabel 턴',
                   style: TextStyle(
                     fontSize: 11,
                     color: colorScheme.onSurface.withOpacity(0.65),
@@ -545,6 +620,7 @@ class _ScoreBoard extends StatelessWidget {
               label: opponentLabel,
               nickname: opponentNickname,
               score: opponentScore,
+              lives: opponentLives,
               isActive: !isMyTurn || isOpponentThinking,
             ),
           ),
@@ -558,12 +634,14 @@ class _PlayerScoreCard extends StatelessWidget {
   final String label;
   final String nickname;
   final int score;
+  final int lives;
   final bool isActive;
 
   const _PlayerScoreCard({
     required this.label,
     required this.nickname,
     required this.score,
+    required this.lives,
     required this.isActive,
   });
 
@@ -611,6 +689,16 @@ class _PlayerScoreCard extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.bold,
               color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${'♥' * lives}${'♡' * (5 - lives).clamp(0, 5)}',
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 13,
+              letterSpacing: 1,
+              color: lives <= 1 ? Colors.redAccent : colorScheme.primary,
             ),
           ),
         ],
@@ -766,8 +854,8 @@ class _MessageBubble extends StatelessWidget {
       alignment: isSystem
           ? Alignment.center
           : isMine
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
+          ? Alignment.centerRight
+          : Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 280),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -775,8 +863,8 @@ class _MessageBubble extends StatelessWidget {
           color: isSystem
               ? colorScheme.onSurface.withOpacity(0.08)
               : isMine
-                  ? colorScheme.primary
-                  : colorScheme.onSurface.withOpacity(0.10),
+              ? colorScheme.primary
+              : colorScheme.onSurface.withOpacity(0.10),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
