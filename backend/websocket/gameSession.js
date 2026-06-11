@@ -1,10 +1,9 @@
 const pool = require('../src/db/postgres');
 const { validateWord } = require('./wordValidator');
 
-const TURN_TIME = Number(process.env.TURN_TIME) || 30;  // 초 (고정, 테스트 시 오버라이드 가능)
+const TURN_TIME = Number(process.env.TURN_TIME) || 30;
 const MAX_LIVES = 5;
 
-// 활성 게임 세션: Map<roomId, session>
 const sessions = new Map();
 
 function createGameSession(roomId, first, second, options = {}) {
@@ -15,10 +14,10 @@ function createGameSession(roomId, first, second, options = {}) {
         roomType,
         dbRoomId,
         players: [
-            { ws: first,  userId: first.userId,  nickname: first.nickname,  lives: MAX_LIVES },
+            { ws: first, userId: first.userId, nickname: first.nickname, lives: MAX_LIVES },
             { ws: second, userId: second.userId, nickname: second.nickname, lives: MAX_LIVES },
         ],
-        turnIdx: 0,       // 0 = first 차례, 1 = second 차례
+        turnIdx: 0,
         lastWord: null,
         usedWords: new Set(),
         timer: null,
@@ -27,7 +26,7 @@ function createGameSession(roomId, first, second, options = {}) {
     };
 
     sessions.set(roomId, session);
-    first.roomId  = roomId;
+    first.roomId = roomId;
     second.roomId = roomId;
 
     console.log(`[게임] 세션 생성: ${roomId} | ${first.nickname} vs ${second.nickname}`);
@@ -35,7 +34,7 @@ function createGameSession(roomId, first, second, options = {}) {
     broadcast(session, {
         type: 'game_start',
         roomId,
-        players: session.players.map(p => ({ nickname: p.nickname, lives: p.lives })),
+        players: session.players.map((p) => ({ nickname: p.nickname, lives: p.lives })),
         turnTime: TURN_TIME,
     });
 
@@ -62,25 +61,20 @@ async function handleWordSubmit(ws, packet) {
 
     const current = session.players[session.turnIdx];
 
-    // 본인 턴이 아님
     if (current.ws !== ws) {
-        return send(ws, { type: 'error', message: '지금은 상대방 차례입니다.' });
+        return send(ws, { type: 'error', message: '지금은 당신의 차례가 아닙니다.' });
     }
 
     const word = (packet.word || '').trim();
-
     const result = await validateWord(word, session.lastWord, session.usedWords);
 
-    // await 도중 세션이 끝났는지 재확인
     if (session.ended) return;
 
     if (!result.ok) {
-        // 무효한 단어 → 타이머 그대로 두고 다시 입력 받음 (남은 시간 유지)
         send(ws, { type: 'word_invalid', reason: result.reason });
         return;
     }
 
-    // 유효한 단어 → 타이머 정지 후 다음 턴
     clearTimeout(session.timer);
     session.usedWords.add(word);
     session.lastWord = word;
@@ -91,7 +85,6 @@ async function handleWordSubmit(ws, packet) {
         submittedBy: current.nickname,
     });
 
-    // 다음 턴
     session.turnIdx = 1 - session.turnIdx;
     startTurn(session);
 }
@@ -115,7 +108,6 @@ function handleTimeout(session) {
         return;
     }
 
-    // 시간 초과한 플레이어가 다시 입력 (턴 유지)
     startTurn(session);
 }
 
@@ -124,17 +116,14 @@ async function endGame(session, winner, loser) {
     session.ended = true;
     clearTimeout(session.timer);
 
-    console.log(`[게임] 종료 - 승: ${winner.nickname} 패: ${loser.nickname}`);
+    console.log(`[게임] 종료 - 승자: ${winner.nickname} / 패자: ${loser.nickname}`);
 
-    // ELO 계산 (K=32 표준)
     const K = 32;
     const winnerScore = await getUserScore(winner.userId);
-    const loserScore  = await getUserScore(loser.userId);
-
+    const loserScore = await getUserScore(loser.userId);
     const expected = 1 / (1 + Math.pow(10, (loserScore - winnerScore) / 400));
     const delta = Math.round(K * (1 - expected));
 
-    // DB 업데이트
     try {
         await pool.query(
             `UPDATE users SET score = score + $1, win_count = win_count + 1 WHERE user_id = $2`,
@@ -155,11 +144,10 @@ async function endGame(session, winner, loser) {
             [loser.userId]: -delta,
         };
 
-        // 게임 로그 저장
         await pool.query(
             `INSERT INTO game_logs
-                (room_id, room_type, winner_id, loser_id, participants, used_words, scores, reason)
-             SELECT $7, $8, u1.id, u2.id, $3::jsonb, $4::jsonb, $5::jsonb, $6
+                (room_id, room_type, winner_id, loser_id, participants, used_words, scores, reason, winner_score_change)
+             SELECT $7, $8, u1.id, u2.id, $3::jsonb, $4::jsonb, $5::jsonb, $6, $9
              FROM users u1, users u2
              WHERE u1.user_id = $1 AND u2.user_id = $2`,
             [
@@ -171,11 +159,14 @@ async function endGame(session, winner, loser) {
                 'finished',
                 session.dbRoomId,
                 session.roomType,
+                delta,
             ]
         );
     } catch (err) {
         console.error('[게임] DB 업데이트 실패:', err.message);
     }
+
+    await markFriendlyRoomFinished(session);
 
     broadcast(session, {
         type: 'game_over',
@@ -185,6 +176,21 @@ async function endGame(session, winner, loser) {
     });
 
     sessions.delete(session.roomId);
+}
+
+async function markFriendlyRoomFinished(session) {
+    if (session.roomType !== 'friendly' || !session.dbRoomId) return;
+
+    try {
+        await pool.query(
+            `UPDATE game_rooms
+             SET status = 'finished'
+             WHERE id = $1 AND status = 'playing'`,
+            [session.dbRoomId]
+        );
+    } catch (err) {
+        console.error('[friendly] Failed to mark room finished:', err.message);
+    }
 }
 
 async function getUserScore(userId) {
@@ -206,15 +212,14 @@ function handleDisconnect(ws) {
 
     clearTimeout(session.timer);
 
-    const opponent = session.players.find(p => p.ws !== ws);
+    const opponent = session.players.find((p) => p.ws !== ws);
     if (opponent) {
         send(opponent.ws, {
             type: 'opponent_disconnected',
-            message: '상대방 연결이 끊어졌습니다. 승리 처리됩니다.',
+            message: '상대방 연결이 끊어졌습니다. 승리 처리합니다.',
         });
 
-        // 남은 플레이어 승리 처리
-        const disconnected = session.players.find(p => p.ws === ws);
+        const disconnected = session.players.find((p) => p.ws === ws);
         if (disconnected) endGame(session, opponent, disconnected);
     }
 }

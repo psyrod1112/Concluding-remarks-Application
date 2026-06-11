@@ -231,14 +231,18 @@ router.post('/:roomId/join', authMiddleware, async (req, res) => {
         const room = roomRes.rows[0];
 
         // 이미 이 방에 참여 중인지 확인
-        const alreadyRes = await client.query(
-            'SELECT room_id FROM room_participants WHERE user_id = $1', [userUuid]
-        );
-        if (alreadyRes.rows.length > 0) {
-            await client.query('ROLLBACK');
-            if (alreadyRes.rows[0].room_id === roomId)
-                return res.status(409).json({ message: '이미 이 방에 참여 중입니다.' });
-            return res.status(400).json({ message: '이미 다른 방에 참여 중입니다.' });
+        const alreadyRes = await client.query(`
+            SELECT gr.id AS room_id, gr.host_id
+            FROM room_participants rp
+            JOIN game_rooms gr ON rp.room_id = gr.id
+            WHERE rp.user_id = $1
+              AND gr.status = 'waiting'
+        `, [userUuid]);
+        const alreadyRoom = alreadyRes.rows.find((row) => row.room_id === roomId);
+        if (alreadyRoom?.room_id === roomId) {
+            await client.query('COMMIT');
+            const updatedRoom = await getRoomWithParticipants(roomId, client);
+            return res.json({ room: updatedRoom });
         }
 
         // 방 상태 확인
@@ -266,6 +270,20 @@ router.post('/:roomId/join', authMiddleware, async (req, res) => {
         }
 
         // 참가자 추가
+        for (const waitingRoom of alreadyRes.rows) {
+            if (waitingRoom.host_id === userUuid) {
+                await client.query(
+                    'DELETE FROM game_rooms WHERE id = $1',
+                    [waitingRoom.room_id]
+                );
+            } else {
+                await client.query(
+                    'DELETE FROM room_participants WHERE room_id = $1 AND user_id = $2',
+                    [waitingRoom.room_id, userUuid]
+                );
+            }
+        }
+
         await client.query(
             'INSERT INTO room_participants (room_id, user_id) VALUES ($1, $2)',
             [roomId, userUuid]

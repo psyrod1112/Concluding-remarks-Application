@@ -84,16 +84,40 @@ CREATE INDEX IF NOT EXISTS idx_words_length ON words (length);
 -- game_logs: 경기 기록 (websocket gameSession.js의 INSERT와 컬럼 일치)
 CREATE TABLE IF NOT EXISTS game_logs (
     id                   SERIAL PRIMARY KEY,
+    room_id              INTEGER REFERENCES game_rooms(id) ON DELETE SET NULL,
+    room_type            VARCHAR(20) NOT NULL DEFAULT 'random',
     winner_id            UUID REFERENCES users(id) ON DELETE SET NULL,
     loser_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+    participants         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    used_words           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    scores               JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reason               VARCHAR(30) NOT NULL DEFAULT 'finished',
     winner_score_change  INTEGER NOT NULL DEFAULT 0,
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     played_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT chk_winner_not_loser CHECK (winner_id IS DISTINCT FROM loser_id)
 );
 
+ALTER TABLE game_logs
+    ADD COLUMN IF NOT EXISTS room_id              INTEGER REFERENCES game_rooms(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS room_type            VARCHAR(20) NOT NULL DEFAULT 'random',
+    ADD COLUMN IF NOT EXISTS participants         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS used_words           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS scores               JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS reason               VARCHAR(30) NOT NULL DEFAULT 'finished',
+    ADD COLUMN IF NOT EXISTS winner_score_change  INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS played_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+UPDATE game_logs
+SET created_at = played_at
+WHERE created_at IS NULL
+  AND played_at IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_game_logs_winner   ON game_logs (winner_id);
 CREATE INDEX IF NOT EXISTS idx_game_logs_loser    ON game_logs (loser_id);
 CREATE INDEX IF NOT EXISTS idx_game_logs_played   ON game_logs (played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_logs_created  ON game_logs (created_at DESC);
 
 -- 활성 유저 점수 정렬용 부분 인덱스
 CREATE INDEX IF NOT EXISTS idx_users_ranking
