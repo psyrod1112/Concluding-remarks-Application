@@ -1,6 +1,4 @@
-/// AI대결 난이도 정의
-///
-/// 프론트 화면 표시와 AI대결 난이도 식별에 사용합니다.
+/// AI대결 난이도
 enum AiDifficulty { easy, normal, hard, expert }
 
 extension AiDifficultyInfo on AiDifficulty {
@@ -35,9 +33,9 @@ extension AiDifficultyInfo on AiDifficulty {
   String get opponentNickname {
     switch (this) {
       case AiDifficulty.easy:
-        return 'AI 새싹';
+        return 'AI 초보';
       case AiDifficulty.normal:
-        return 'AI 라이벌';
+        return 'AI 중수';
       case AiDifficulty.hard:
         return 'AI 고수';
       case AiDifficulty.expert:
@@ -83,7 +81,6 @@ extension AiDifficultyInfo on AiDifficulty {
         return 20;
     }
   }
-
 }
 
 AiDifficulty aiDifficultyFromId(String? id) {

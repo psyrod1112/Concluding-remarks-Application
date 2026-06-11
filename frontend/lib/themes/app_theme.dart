@@ -20,12 +20,14 @@ class AppTheme {
       useMaterial3: true,
       fontFamily: fontFamily,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: lightBackground,
+      scaffoldBackgroundColor: Colors.transparent,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
-        backgroundColor: lightBackground,
+        backgroundColor: Colors.transparent,
         foregroundColor: Color(0xFF0F172A),
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
       cardTheme: CardThemeData(
         color: Colors.white,
@@ -79,12 +81,14 @@ class AppTheme {
       useMaterial3: true,
       fontFamily: fontFamily,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: darkBackground,
+      scaffoldBackgroundColor: Colors.transparent,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
-        backgroundColor: darkBackground,
+        backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
       cardTheme: CardThemeData(
         color: darkSurface,

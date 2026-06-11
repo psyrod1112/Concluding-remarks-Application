@@ -25,7 +25,7 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               children: [
                 Icon(
-                  Icons.account_circle_outlined,
+                  Icons.account_circle_rounded,
                   size: 56,
                   color: colorScheme.primary,
                 ),
@@ -58,28 +58,28 @@ class HomeScreen extends StatelessWidget {
               children: [
                 _HomeMenuCard(
                   title: '랜덤 매칭',
-                  icon: Icons.casino_outlined,
+                  icon: Icons.shuffle_rounded,
                   onTap: () {
                     Navigator.pushNamed(context, '/random-match');
                   },
                 ),
                 _HomeMenuCard(
                   title: '친선 대결',
-                  icon: Icons.people_outline,
+                  icon: Icons.groups_rounded,
                   onTap: () {
                     Navigator.pushNamed(context, '/friendly-match');
                   },
                 ),
                 _HomeMenuCard(
                   title: '커뮤니티',
-                  icon: Icons.forum_outlined,
+                  icon: Icons.chat_bubble_rounded,
                   onTap: () {
                     Navigator.pushNamed(context, '/community');
                   },
                 ),
                 _HomeMenuCard(
                   title: 'AI대결',
-                  icon: Icons.smart_toy_outlined,
+                  icon: Icons.smart_toy_rounded,
                   onTap: () {
                     Navigator.pushNamed(context, '/ai-battle');
                   },
@@ -111,7 +111,8 @@ class _HomeMenuCard extends StatelessWidget {
 
     return Card(
       color: theme.cardColor,
-      elevation: 1.5,
+      elevation: 2,
+      shadowColor: colorScheme.primary.withOpacity(0.16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -119,8 +120,20 @@ class _HomeMenuCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 42, color: colorScheme.primary),
-            const SizedBox(height: 12),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Icon(
+                icon,
+                size: 34,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 14),
             Text(
               title,
               style: TextStyle(
