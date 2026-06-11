@@ -231,9 +231,13 @@ router.post('/:roomId/join', authMiddleware, async (req, res) => {
         const room = roomRes.rows[0];
 
         // 이미 이 방에 참여 중인지 확인
-        const alreadyRes = await client.query(
-            'SELECT room_id FROM room_participants WHERE user_id = $1', [userUuid]
-        );
+        const alreadyRes = await client.query(`
+            SELECT gr.id AS room_id
+            FROM room_participants rp
+            JOIN game_rooms gr ON rp.room_id = gr.id
+            WHERE rp.user_id = $1
+              AND gr.status = 'waiting'
+        `, [userUuid]);
         if (alreadyRes.rows.length > 0) {
             await client.query('ROLLBACK');
             if (alreadyRes.rows[0].room_id === roomId)

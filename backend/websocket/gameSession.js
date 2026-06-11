@@ -166,6 +166,8 @@ async function endGame(session, winner, loser) {
         console.error('[게임] DB 업데이트 실패:', err.message);
     }
 
+    await markFriendlyRoomFinished(session);
+
     broadcast(session, {
         type: 'game_over',
         winner: winner.nickname,
@@ -174,6 +176,21 @@ async function endGame(session, winner, loser) {
     });
 
     sessions.delete(session.roomId);
+}
+
+async function markFriendlyRoomFinished(session) {
+    if (session.roomType !== 'friendly' || !session.dbRoomId) return;
+
+    try {
+        await pool.query(
+            `UPDATE game_rooms
+             SET status = 'finished'
+             WHERE id = $1 AND status = 'playing'`,
+            [session.dbRoomId]
+        );
+    } catch (err) {
+        console.error('[friendly] Failed to mark room finished:', err.message);
+    }
 }
 
 async function getUserScore(userId) {
