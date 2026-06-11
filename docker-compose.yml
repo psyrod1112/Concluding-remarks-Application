@@ -9,7 +9,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d word_chain"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d word_chain" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,6 +34,8 @@ services:
       JWT_REFRESH_SECRET: wc_refresh_secret_change_in_prod_2024
       JWT_ACCESS_TTL: 900
       JWT_REFRESH_TTL: 604800
+      # 단어 검증 임시로 끄는 코드 
+      # WORD_VALIDATION_MODE: loose
     depends_on:
       postgres:
         condition: service_healthy
